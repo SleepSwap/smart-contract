@@ -1,31 +1,31 @@
-# SleepSwap - Trade And Yeild While You Sleep
+# Hardhat Testing Template
 
-Trade your crypto tokens through customised strategies and yeild more returns.
+Try running some of the following tasks:
 
-![Website Screenshot](sleep_swap.png)
+```shell
+yarn compile
+yarn test
+yarn test --parallel
+yarn coverage
 
-Following features are developed:
+npx hardhat accounts
+npx hardhat compile
+npx hardhat clean
+npx hardhat test
+npx hardhat node
+npx hardhat help
+REPORT_GAS=true npx hardhat test
+npx hardhat coverage
+npx hardhat run scripts/deploy.ts
+TS_NODE_FILES=true npx ts-node scripts/deploy.ts
+npx eslint '**/*.{js,ts}'
+npx eslint '**/*.{js,ts}' --fix
+npx prettier '**/*.{json,sol,md}' --check
+npx prettier '**/*.{json,sol,md}' --write
+npx solhint 'contracts/**/*.sol'
+npx solhint 'contracts/**/*.sol' --fix
+```
 
-1. Authentication using Moralis
-2. Read/Write Transaction Methods using Moralis
-3. Stake In Pool Section
-4. UI/UX design using Figma
-5. Components using Material UI and Bootstrap.
+# Performance optimizations
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
-
-The page will reload if you make edits.\
-You will also see any lint errors in the console.
-
-## Available Scripts
-
-In the project directory, you can run:
-
-### `yarn start`
-
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
-
-The page will reload if you make edits.\
-You will also see any lint errors in the console.
+For faster runs of your tests and scripts, consider skipping ts-node's type checking by setting the environment variable `TS_NODE_TRANSPILE_ONLY` to `1` in hardhat's environment. For more details see [the documentation](https://hardhat.org/guides/typescript.html#performance-optimizations).

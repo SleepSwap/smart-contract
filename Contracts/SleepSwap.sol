@@ -261,7 +261,7 @@ contract SleepSwap is Ownable {
             emit OrderCreated(
                 newOrder.orderId,
                 newOrder.tokenAddress,
-                msg.sender,
+                newOrder.user,
                 newOrder.price,
                 newOrder.amount,
                 newOrder.isBuy,
@@ -288,7 +288,7 @@ contract SleepSwap is Ownable {
             emit OrderCreated(
                 newOrder.orderId,
                 newOrder.tokenAddress,
-                msg.sender,
+                newOrder.user,
                 newOrder.price,
                 newOrder.amount,
                 newOrder.isBuy,

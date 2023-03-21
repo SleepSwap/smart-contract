@@ -242,8 +242,11 @@ contract SleepSwap is Ownable {
         );
 
         for (uint256 i = 0; i < _sellPrices.length; i++) {
+           
+            uint256 _orderId = ++ordersCount;
+           
             Order memory newOrder = Order({
-                orderId: ordersCount + 1,
+                orderId: _orderId,
                 tokenAddress: _tokenAddress,
                 user: msg.sender,
                 price: _sellPrices[i],
@@ -253,9 +256,9 @@ contract SleepSwap is Ownable {
                 executed: false
             });
 
-            orders[ordersCount++] = newOrder;
+            orders[_orderId] = newOrder;
 
-            userOrders[msg.sender].push(ordersCount - 1);
+            userOrders[msg.sender].push(_orderId);
 
             // emit event
             emit OrderCreated(
@@ -271,8 +274,11 @@ contract SleepSwap is Ownable {
         }
 
         for (uint256 i = 0; i < _buyPrices.length; i++) {
+
+             uint256 _orderId = ++ordersCount;
+
             Order memory newOrder = Order({
-                orderId: ordersCount + 1,
+                orderId: _orderId,
                 tokenAddress: _tokenAddress,
                 user: msg.sender,
                 price: _buyPrices[i],
@@ -282,8 +288,8 @@ contract SleepSwap is Ownable {
                 executed: false
             });
 
-            orders[ordersCount++] = newOrder;
-            userOrders[msg.sender].push(ordersCount - 1);
+            orders[_orderId] = newOrder;
+            userOrders[msg.sender].push(_orderId);
 
             emit OrderCreated(
                 newOrder.orderId,
@@ -336,6 +342,9 @@ contract SleepSwap is Ownable {
         //2. swap
         //3. update user balances
         for (uint256 i = 0; i < _orderIds.length; i++) {
+
+            require(_orderIds[i] > 0, "Order id must be greater than 0!");
+
             Order storage _order = orders[_orderIds[i]];
 
             require(_order.open, "Order removed!");

@@ -18,7 +18,7 @@ contract SleepSwapAccumulation is Ownable {
     string public name = "SleepSwap Accumulation";
 
     //manager: execute trx
-    address public manager;
+    mapping(address => bool) public managers;
     address public usdtAddress;
     uint256 public poolBalance;
     mapping(address => uint256) public poolTokenBalances;
@@ -91,24 +91,20 @@ contract SleepSwapAccumulation is Ownable {
     );
 
     // init contract
-    constructor(
-        address _usdtAddress,
-        ISwapRouter _swapRouter,
-        address _manager
-    ) {
+    constructor(address _usdtAddress, ISwapRouter _swapRouter) {
         usdtAddress = _usdtAddress;
         swapRouter = _swapRouter;
-        manager = _manager;
+        managers[msg.sender] = true;
     }
 
     //modifiers
     modifier onlyManager() {
-        require(msg.sender == manager);
+        require(managers[msg.sender] == true);
         _;
     }
 
     function addManager(address _manager) public onlyOwner {
-        manager = _manager;
+        managers[_manager] = true;
     }
 
     function updateFeePercent(uint256 _newFeePercent) public onlyOwner {

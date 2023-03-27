@@ -4,12 +4,8 @@ async function main() {
   const sleepFactory = await ethers.getContractFactory("SleepSwapAccumulation");
   const fiat_contract = "0xBDf3e573F6d28d0F96Ad60a34529e88D82501135";
   const router_contract = "0xE592427A0AEce92De3Edee1F18E0157C05861564";
-  const manager_address = "0x87228Dd1eca832d14f4aB0CFb99c471195E7f6dB";
-  const sleep = await sleepFactory.deploy(
-    fiat_contract,
-    router_contract,
-    manager_address
-  );
+
+  const sleep = await sleepFactory.deploy(fiat_contract, router_contract);
   await sleep.deployed();
   console.log("sleepswap trading contract deployed to:", sleep.address);
 }

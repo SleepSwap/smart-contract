@@ -246,7 +246,8 @@ contract SleepSwapAccumulation is Ownable {
                 "All orders executed"
             );
             require(
-                selected_order.remainingAmount > selected_order.fiatOrderAmount,
+                selected_order.remainingAmount >=
+                    selected_order.fiatOrderAmount,
                 "Insufficient balance to execute order"
             );
 

@@ -5,7 +5,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "deploy": "node scripts/deploy.js",
     "deploy-accumulation": "hardhat run --network matictest scripts/deployAccumulation.js",
-    "verify-contract-accumulation": "hardhat verify --network matictest 0xEF8bfB001801Dfee3dc421aB31398C2d1fdB2bd4 0xBDf3e573F6d28d0F96Ad60a34529e88D82501135 0xE592427A0AEce92De3Edee1F18E0157C05861564 0x87228Dd1eca832d14f4aB0CFb99c471195E7f6dB",
+    "verify-contract-accumulation": "hardhat verify --network matictest 0x7B823b4a61D3e796CA7e74db4cBdbaD571f52dF4 0xBDf3e573F6d28d0F96Ad60a34529e88D82501135 0xE592427A0AEce92De3Edee1F18E0157C05861564",
     "clean": "hardhat clean"
   },
   "devDependencies": {

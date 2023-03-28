@@ -251,9 +251,9 @@ contract SleepSwapAccumulation is Ownable {
             );
 
             //run buy order
-            userUsdtBalances[msg.sender] -= selected_order.fiatOrderAmount; //updating user total fiat balance
-            poolBalance -= selected_order.fiatOrderAmount; //updating pool fiat balance
-            selected_order.remainingAmount -= selected_order.fiatOrderAmount; //updating remaning balance of order for future trades
+            userUsdtBalances[msg.sender] -= selected_order.fiatOrderAmount; // updating user total fiat balance
+            poolBalance -= selected_order.fiatOrderAmount; //  pool fiat balance
+            selected_order.remainingAmount -= selected_order.fiatOrderAmount; // updating remaning balance of order for future trades
 
             uint256 token_received = swapTokenFromUsdt(
                 selected_order.fiatOrderAmount,
@@ -262,6 +262,7 @@ contract SleepSwapAccumulation is Ownable {
 
             if (selected_order.executedGrids + 1 == selected_order.grids) {
                 selected_order.open = false;
+                selected_order.executedGrids += 1;
             } else {
                 selected_order.executedGrids += 1;
             }

@@ -7,7 +7,7 @@ async function main() {
 
   const sleep = await sleepFactory.deploy(fiat_contract, router_contract);
   await sleep.deployed();
-  console.log("sleepswap trading contract deployed to:", sleep.address);
+  console.log("sleepswap accumulation contract deployed to:", sleep.address);
 }
 
 // We recommend this pattern to be able to use async/await everywhere

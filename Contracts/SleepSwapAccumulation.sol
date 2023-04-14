@@ -8,6 +8,7 @@ import "@uniswap/v3-periphery/contracts/libraries/TransferHelper.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "./TestSwap.sol";
 
 // BASE TOKEN; USDT - usdtToken
 // TRADE TOKENL: ERC20 - tokenAmount
@@ -20,16 +21,16 @@ contract SleepSwapAccumulation is Ownable {
     //manager: execute trx
     mapping(address => uint256) public managers;
     address public usdtAddress;
-    uint256 public poolBalance;
-    mapping(address => uint256) public poolTokenBalances;
+    uint256 public poolBalance; // usdt balance in pool
+    mapping(address => uint256) public poolTokenBalances; // balance mapping for all tokens
 
     // Fees
     uint256 public fee;
     uint256 public feePercent = 5;
 
-    mapping(address => uint256) public userUsdtBalances;
+    // mapping(address => uint256) public userUsdtBalances;
     mapping(address => address[]) public userTokenAddreses;
-    mapping(address => mapping(address => uint256)) public userTokenBalances;
+    // mapping(address => mapping(address => uint256)) public userTokenBalances;
     // 0x7D.  --> PBR --> 300
 
     struct Order {
@@ -41,6 +42,7 @@ contract SleepSwapAccumulation is Ownable {
         uint256 depositAmount;
         uint256 remainingAmount;
         uint256 fiatOrderAmount;
+        uint256 tokenAccumulated;
         uint256 grids;
         uint256 percentage;
         uint256 executedGrids;
@@ -50,7 +52,9 @@ contract SleepSwapAccumulation is Ownable {
     uint256 public ordersCount = 0;
     // mappings
     mapping(uint256 => Order) public orders;
-    mapping(address => uint256[]) public userOrders;
+    mapping(address => mapping(address => uint256[])) public userOrders;
+    // 0x7D.  --> PBR --> [1,2,3]
+    // 0x8c.  --> PBR --> [5,6]
 
     // swap initializations
     ISwapRouter public immutable swapRouter;
@@ -174,15 +178,15 @@ contract SleepSwapAccumulation is Ownable {
             grids: _grids,
             percentage: _percentage,
             remainingAmount: _amount,
+            tokenAccumulated: 0,
             executedGrids: 0,
             open: true
         });
 
         orders[ordersCount] = new_order;
-        userOrders[msg.sender].push(ordersCount);
+        userOrders[msg.sender][_tokenAddress].push(ordersCount);
 
-        // Updating  pool & user balances
-        userUsdtBalances[msg.sender] += _amount;
+        // Updating  pool usdt balance when user deposit usdt
         poolBalance += _amount;
 
         emit Invested(
@@ -197,41 +201,47 @@ contract SleepSwapAccumulation is Ownable {
     }
 
     function withdraw(address _tokenAddress) public {
-        uint256[] storage user_all_orders = userOrders[msg.sender];
-        uint256 fiat_balance_to_return = 0;
-        //close existing open orders
-        for (uint256 i = 0; i < user_all_orders.length; i++) {
-            Order storage selected_order = orders[user_all_orders[i]];
+        uint256[] storage user_orders = userOrders[msg.sender][_tokenAddress];
 
-            if (selected_order.tokenAddress == _tokenAddress) {
-                fiat_balance_to_return += selected_order.remainingAmount;
-                selected_order.open = false;
-                emit OrderCancelled(
-                    selected_order.orderId,
-                    selected_order.executedGrids,
-                    selected_order.remainingAmount
-                );
-            }
+        require(user_orders.length > 0, "No orders!");
+
+        uint256 fiat_balance_to_return = 0;
+        uint256 token_amount_to_return = 0;
+        //close existing open orders
+        for (uint256 i = 0; i < user_orders.length; i++) {
+            Order storage selected_order = orders[user_orders[i]];
+
+            fiat_balance_to_return += selected_order.remainingAmount;
+            token_amount_to_return += selected_order.tokenAccumulated;
+            selected_order.open = false;
+            // token and usdt deduction from each order
+            selected_order.remainingAmount = 0;
+            selected_order.tokenAccumulated = 0;
+
+            emit OrderCancelled(
+                selected_order.orderId,
+                selected_order.executedGrids,
+                selected_order.remainingAmount
+            );
         }
 
-        uint256 user_token_balance = userTokenBalances[msg.sender][
-            _tokenAddress
-        ];
-
-        userUsdtBalances[msg.sender] -= fiat_balance_to_return;
-        userTokenBalances[msg.sender][_tokenAddress] = 0;
-
-        // reducing pool balances
+        // deducting  pool usdt balances
         poolBalance -= fiat_balance_to_return;
         IERC20(usdtAddress).transfer(msg.sender, fiat_balance_to_return);
-        IERC20(_tokenAddress).transfer(msg.sender, user_token_balance);
+
+        // return tokens if some grids have already executed
+        if (token_amount_to_return > 0) {
+            poolTokenBalances[_tokenAddress] -= token_amount_to_return;
+
+            IERC20(_tokenAddress).transfer(msg.sender, token_amount_to_return);
+        }
 
         emit Withdraw(
             msg.sender,
-            user_all_orders,
+            user_orders,
             _tokenAddress,
             fiat_balance_to_return,
-            user_token_balance
+            token_amount_to_return
         );
     }
 
@@ -251,27 +261,26 @@ contract SleepSwapAccumulation is Ownable {
                 "Insufficient balance to execute order"
             );
 
-            //run buy order
-            userUsdtBalances[msg.sender] -= selected_order.fiatOrderAmount; // updating user total fiat balance
-            poolBalance -= selected_order.fiatOrderAmount; //  pool fiat balance
-            selected_order.remainingAmount -= selected_order.fiatOrderAmount; // updating remaning balance of order for future trades
+            poolBalance -= selected_order.fiatOrderAmount; // deduct usdt from pool on order executed
+            selected_order.remainingAmount -= selected_order.fiatOrderAmount; // deduct usdt from order on order executed
 
             uint256 token_received = swapTokenFromUsdt(
                 selected_order.fiatOrderAmount,
                 selected_order.tokenAddress
             );
 
-            if (selected_order.executedGrids + 1 == selected_order.grids) {
-                selected_order.open = false;
-                selected_order.executedGrids += 1;
-            } else {
-                selected_order.executedGrids += 1;
-            }
+            // update tokens recieved to order token balance
+            selected_order.tokenAccumulated += token_received;
 
-            userTokenBalances[msg.sender][
-                selected_order.tokenAddress
-            ] += token_received;
+            // update tokens recieved to pool token balance
             poolTokenBalances[selected_order.tokenAddress] += token_received;
+
+            selected_order.executedGrids += 1; // updated executed girds
+
+            //stop the order if all grids executed
+            if (selected_order.executedGrids == selected_order.grids) {
+                selected_order.open = false;
+            }
 
             emit OrderExecuted(
                 _orderIds[i],
@@ -281,5 +290,49 @@ contract SleepSwapAccumulation is Ownable {
                 selected_order.remainingAmount
             );
         }
+    }
+
+    function emergencyWithdrawPoolTokens(address _token) public onlyOwner {
+        require(poolTokenBalances[_token] > 0, "Empty pool!");
+
+        uint256 balanceToWtithdraw = poolTokenBalances[_token];
+        poolTokenBalances[_token] = 0;
+        IERC20(_token).transfer(msg.sender, balanceToWtithdraw);
+    }
+
+    function emergencyWithdrawPoolUsdt() public onlyOwner {
+        require(poolBalance > 0, "Zero usdt in pool!");
+
+        uint256 usdtToWithdraw = poolBalance;
+        poolBalance = 0;
+        IERC20(usdtAddress).transfer(msg.sender, usdtToWithdraw);
+    }
+
+    function emergencyWithdrawByOrderId(uint256 _orderId) public onlyOwner {
+        // if order id exists
+        require(orders[_orderId].user != address(0), "Invalid order id!");
+
+        Order storage _order = orders[_orderId];
+
+        // deduct usdt from order
+        uint256 orderUsdt = _order.remainingAmount;
+        _order.remainingAmount = 0;
+        _order.open = false;
+        // deduct usdt from pool
+        poolBalance -= orderUsdt;
+
+        // deduct tokens from order if any
+        uint256 orderToken = _order.tokenAccumulated;
+
+        if (orderToken > 0) {
+            // deduct tokens from order
+            _order.tokenAccumulated = 0;
+
+            // deduct tokens from pool
+            poolTokenBalances[_order.tokenAddress] -= orderToken;
+
+            IERC20(_order.tokenAddress).transfer(msg.sender, orderToken);
+        }
+        IERC20(usdtAddress).transfer(msg.sender, orderUsdt);
     }
 }

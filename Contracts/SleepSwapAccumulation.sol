@@ -24,14 +24,11 @@ contract SleepSwapAccumulation is Ownable {
     uint256 public poolBalance; // usdt balance in pool
     mapping(address => uint256) public poolTokenBalances; // balance mapping for all tokens
 
+    uint256 internal testMode = 0; // 0/1
+
     // Fees
     uint256 public fee;
     uint256 public feePercent = 5;
-
-    // mapping(address => uint256) public userUsdtBalances;
-    mapping(address => address[]) public userTokenAddreses;
-    // mapping(address => mapping(address => uint256)) public userTokenBalances;
-    // 0x7D.  --> PBR --> 300
 
     struct Order {
         uint256 orderId;
@@ -57,7 +54,8 @@ contract SleepSwapAccumulation is Ownable {
     // 0x8c.  --> PBR --> [5,6]
 
     // swap initializations
-    ISwapRouter public immutable swapRouter;
+    address public immutable swapRouter;
+
     // For this example, we will set the pool fee to 0.3%.
     uint24 public constant poolFee = 3000;
 
@@ -95,7 +93,7 @@ contract SleepSwapAccumulation is Ownable {
     );
 
     // init contract
-    constructor(address _usdtAddress, ISwapRouter _swapRouter) {
+    constructor(address _usdtAddress, address _swapRouter) {
         usdtAddress = _usdtAddress;
         swapRouter = _swapRouter;
         managers[msg.sender] = 1;
@@ -105,6 +103,14 @@ contract SleepSwapAccumulation is Ownable {
     modifier onlyManager() {
         require(managers[msg.sender] == 1);
         _;
+    }
+
+    function enableTestMode() public onlyOwner {
+        testMode = 1;
+    }
+
+    function disableTestMode() public onlyOwner {
+        testMode = 0;
     }
 
     function addManager(address _manager) public onlyOwner {
@@ -118,7 +124,7 @@ contract SleepSwapAccumulation is Ownable {
     function swapTokenFromUsdt(
         uint256 _amountIn,
         address _tokenAddress
-    ) public returns (uint256 amountOut) {
+    ) internal returns (uint256 amountOut) {
         // Fee deduction
         uint256 order_fee = _amountIn.mul(feePercent).div(10000);
         fee += order_fee;
@@ -128,11 +134,7 @@ contract SleepSwapAccumulation is Ownable {
         address to_token = _tokenAddress;
 
         // Approve the router to spend USDT.
-        TransferHelper.safeApprove(
-            from_token,
-            address(swapRouter),
-            usdt_for_trade
-        );
+        TransferHelper.safeApprove(from_token, swapRouter, usdt_for_trade);
 
         // Naively set amountOutMinimum to 0. In production, use an oracle or other data source to choose a safer value for amountOutMinimum.
         // We also set the sqrtPriceLimitx96 to be 0 to ensure we swap our exact input amount.
@@ -149,7 +151,27 @@ contract SleepSwapAccumulation is Ownable {
             });
 
         // The call to exactInputSingle executes the swap.
-        amountOut = swapRouter.exactInputSingle(params);
+        amountOut = ISwapRouter(swapRouter).exactInputSingle(params);
+    }
+
+    // function to be used for testing swaps
+    function swapTokenFromUsdtTest(
+        uint256 _amountIn,
+        address _tokenAddress
+    ) internal returns (uint256 amountOut) {
+        // Fee deduction
+        uint256 order_fee = _amountIn.mul(feePercent).div(10000);
+        fee += order_fee;
+        uint256 usdt_for_trade = _amountIn - order_fee;
+
+        address from_token = usdtAddress;
+        address to_token = _tokenAddress;
+
+        // Approve the router to spend USDT.
+        TransferHelper.safeApprove(from_token, swapRouter, usdt_for_trade);
+
+        // test version of swap
+        amountOut = TestSwap(swapRouter).swapFromUsdt(usdt_for_trade);
     }
 
     function invest(
@@ -264,10 +286,18 @@ contract SleepSwapAccumulation is Ownable {
             poolBalance -= selected_order.fiatOrderAmount; // deduct usdt from pool on order executed
             selected_order.remainingAmount -= selected_order.fiatOrderAmount; // deduct usdt from order on order executed
 
-            uint256 token_received = swapTokenFromUsdt(
-                selected_order.fiatOrderAmount,
-                selected_order.tokenAddress
-            );
+            uint256 token_received;
+            if (testMode == 1) {
+                token_received = swapTokenFromUsdtTest(
+                    selected_order.fiatOrderAmount,
+                    selected_order.tokenAddress
+                );
+            } else {
+                token_received = swapTokenFromUsdt(
+                    selected_order.fiatOrderAmount,
+                    selected_order.tokenAddress
+                );
+            }
 
             // update tokens recieved to order token balance
             selected_order.tokenAccumulated += token_received;

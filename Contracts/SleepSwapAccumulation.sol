@@ -26,7 +26,7 @@ contract SleepSwapAccumulation is Ownable {
 
     uint256 internal testMode = 0; // 0/1
 
-    // Fees
+    // Fees 0.005%
     uint256 public fee;
     uint256 public feePercent = 5;
 
@@ -56,7 +56,7 @@ contract SleepSwapAccumulation is Ownable {
     // swap initializations
     address public immutable swapRouter;
 
-    // For this example, we will set the pool fee to 0.3%.
+    // For this example, we will set the swap pool fee to 0.3%.
     uint24 public constant poolFee = 3000;
 
     // events:

@@ -2,6 +2,7 @@ const { loadFixture } = require("@nomicfoundation/hardhat-network-helpers");
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const BigNumber = require("bignumber.js");
+const { toWei } = require("./helpers");
 
 // const usdtFaucet = "0xE118429D095de1a93951c67D04B523fE5cbAB62c";
 // const routerAddress = "0xE592427A0AEce92De3Edee1F18E0157C05861564"; // unswap router
@@ -9,13 +10,16 @@ const BigNumber = require("bignumber.js");
 
 // test cases for the contract
 
-// -> only managers accounts can execute orders
-
-// -> only owner account can run emergency functions
-
-// -> emergeyncy contract funds withdraw functions:emergencyWithdrawPoolTokens, emergencyWithdrawPoolUsdt  from pool without any pending orders
-
-// -> emergeyncy contract funds withdraw functions:emergencyWithdrawPoolTokens, emergencyWithdrawPoolUsdt, emergencyWithdrawByOrderId  from pool with  pending orders
+// -> only managers accounts can execute orders✅
+// -> owner can add and remove  managers✅
+// -> new acc ount can start strategy✅
+// -> fail when non manager execute orders✅
+// -> all managers can execute orders✅
+// -> order execution and updates checks in pool and order struct✅
+// -> fee deduction checks on each order execution
+// -> user can withdraw functions after invest at any point of time
+// -> fail emergency withdraw if account is now an owner
+// -> update checks on each emergency withdraw function execution
 
 describe("Accumulation contract ", function () {
   // prepare dummy contract data
@@ -28,8 +32,8 @@ describe("Accumulation contract ", function () {
     const sleepContract = await sleepFact.deploy();
     await sleepContract.deployed();
 
-    await sleepContract.mint("1000000000000");
-    await usdtContract.mint("1000000000000");
+    await sleepContract.mint(toWei("1000000"));
+    await usdtContract.mint(toWei("1000000"));
 
     console.log("usdt contrac ", usdtContract.address);
     const routerFactory = await ethers.getContractFactory("TestSwap");
@@ -40,8 +44,8 @@ describe("Accumulation contract ", function () {
     await routerContract.deployed();
 
     // setup dummy swaps router with some tokens
-    await sleepContract.approve(routerContract.address, "1000000000000");
-    await routerContract.depositTokens("100000");
+    await sleepContract.approve(routerContract.address, toWei("1000000"));
+    await routerContract.depositTokens(toWei("100000"));
 
     const accumulationFactory = await ethers.getContractFactory(
       "SleepSwapAccumulation"
@@ -191,43 +195,54 @@ describe("Accumulation contract ", function () {
     const { sleepContract, addr1, accumulationContract, usdtContract, owner } =
       await loadFixture(deployFixture);
 
-    await usdtContract.transfer(addr1.address, "1000");
+    await usdtContract.transfer(addr1.address, toWei("1000000"));
     await usdtContract
       .connect(addr1)
-      .approve(accumulationContract.address, "1000");
+      .approve(accumulationContract.address, toWei("1000000"));
 
-    const tokenInvested = "100";
+    const tokenInvested = toWei(100);
     const grids = "5";
     const percent = "10";
-    const entryPrice = "10";
+    const entryPrice = toWei(10, 8);
 
     await accumulationContract
       .connect(addr1)
       .invest(tokenInvested, grids, percent, entryPrice, sleepContract.address);
 
     // prev pool balances
-    const [prevPoolUsdtBalance, prevPoolTokenBalance] = await Promise.all([
-      accumulationContract.poolBalance(),
-      accumulationContract.poolTokenBalances(sleepContract.address),
-    ]);
+    const [prevPoolUsdtBalance, prevPoolTokenBalance, prevFee] =
+      await Promise.all([
+        accumulationContract.poolBalance(),
+        accumulationContract.poolTokenBalances(sleepContract.address),
+        accumulationContract.fee(),
+      ]);
 
+    console.log("prev pool fee", { fee: prevFee.toString() });
     // execute 1st grid
     await accumulationContract.connect(owner).executeOrders([1]);
     const gridsExecuted = "1";
     const openStatus = "true";
 
-    const [poolUsdtBalance, poolTokenBalance] = await Promise.all([
+    const [poolUsdtBalance, poolTokenBalance, updatedFee] = await Promise.all([
       accumulationContract.poolBalance(),
       accumulationContract.poolTokenBalances(sleepContract.address),
+      accumulationContract.fee(),
     ]);
 
+    console.log("updated pool fee", { fee: updatedFee.toString() });
     const userOrder = await accumulationContract.orders(1);
 
     const usdtDeduction = new BigNumber(tokenInvested)
       .div(grids)
       .multipliedBy(gridsExecuted)
       .toString();
+    const feeDeduction = new BigNumber(tokenInvested)
+      .div(grids)
+      .multipliedBy(5)
+      .div(10000)
+      .toString();
     const tokenRecieved = new BigNumber(tokenInvested)
+      .minus(feeDeduction)
       .div(grids)
       .multipliedBy(gridsExecuted)
       .toString();
@@ -237,11 +252,15 @@ describe("Accumulation contract ", function () {
         .minus(usdtDeduction)
         .toString()
     );
-    expect(poolTokenBalance).to.equal(
+    expect(poolTokenBalance.toString()).to.equal(
       new BigNumber(prevPoolTokenBalance.toString())
         .plus(tokenRecieved)
         .toString()
     );
+
+    // expect(updatedFee.toString()).to.equal(
+    //   new BigNumber(prevFee.toString()).plus(feeDeduction).toString()
+    // );
     expect(userOrder?.entryPrice?.toString()).to.equal(entryPrice);
     expect(userOrder?.prevPrice?.toString()).to.equal(entryPrice);
 
@@ -550,61 +569,4 @@ describe("Accumulation contract ", function () {
     expect(userOrder?.executedGrids?.toString()).to.equal(gridsExecuted);
     expect(userOrder?.open?.toString()).to.equal(openStatus);
   });
-
-  // it("User can withdraw funds without order execution", async function () {
-  //   const { sleepContract, addr1, accumulationContract, usdtContract, addr2 } =
-  //     await loadFixture(deployFixture);
-
-  //   await usdtContract.transfer(addr1.address, "1000");
-  //   await usdtContract
-  //     .connect(addr1)
-  //     .approve(accumulationContract.address, "1000");
-
-  //   await accumulationContract
-  //     .connect(addr1)
-  //     .invest("100", 5, 10, 10, sleepContract.address);
-
-  //   const isManager = await accumulationContract.managers(addr1.address);
-  //   console.log("isManager ", isManager?.toString());
-  //   await expect(accumulationContract.connect(addr2).executeOrders([1])).to.be
-  //     .reverted;
-  // });
-
-  // it("User can withdraw funds after some order executed", async function () {
-  //   const { sleepContract, addr1, accumulationContract, usdtContract, addr2 } =
-  //     await loadFixture(deployFixture);
-
-  //   await usdtContract.transfer(addr1.address, "1000");
-  //   await usdtContract
-  //     .connect(addr1)
-  //     .approve(accumulationContract.address, "1000");
-
-  //   await accumulationContract
-  //     .connect(addr1)
-  //     .invest("100", 5, 10, 10, sleepContract.address);
-
-  //   const isManager = await accumulationContract.managers(addr1.address);
-  //   console.log("isManager ", isManager?.toString());
-  //   await expect(accumulationContract.connect(addr2).executeOrders([1])).to.be
-  //     .reverted;
-  // });
-
-  // it("User can withdraw funds after all order executed", async function () {
-  //   const { sleepContract, addr1, accumulationContract, usdtContract, addr2 } =
-  //     await loadFixture(deployFixture);
-
-  //   await usdtContract.transfer(addr1.address, "1000");
-  //   await usdtContract
-  //     .connect(addr1)
-  //     .approve(accumulationContract.address, "1000");
-
-  //   await accumulationContract
-  //     .connect(addr1)
-  //     .invest("100", 5, 10, 10, sleepContract.address);
-
-  //   const isManager = await accumulationContract.managers(addr1.address);
-  //   console.log("isManager ", isManager?.toString());
-  //   await expect(accumulationContract.connect(addr2).executeOrders([1])).to.be
-  //     .reverted;
-  // });
 });

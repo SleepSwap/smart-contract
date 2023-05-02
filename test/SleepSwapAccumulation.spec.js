@@ -1,8 +1,8 @@
 const { loadFixture } = require("@nomicfoundation/hardhat-network-helpers");
 const { expect } = require("chai");
-const { ethers } = require("hardhat");
 const BigNumber = require("bignumber.js");
 const { toWei } = require("./helpers");
+const { deployFixture } = require("./deployFixture");
 
 // const usdtFaucet = "0xE118429D095de1a93951c67D04B523fE5cbAB62c";
 // const routerAddress = "0xE592427A0AEce92De3Edee1F18E0157C05861564"; // unswap router
@@ -16,64 +16,12 @@ const { toWei } = require("./helpers");
 // -> fail when non manager execute orders✅
 // -> all managers can execute orders✅
 // -> order execution and updates checks in pool and order struct✅
-// -> fee deduction checks on each order execution
+// -> fee deduction checks on each order execution✅
 // -> user can withdraw functions after invest at any point of time
 // -> fail emergency withdraw if account is now an owner
 // -> update checks on each emergency withdraw function execution
 
-describe("Accumulation contract ", function () {
-  // prepare dummy contract data
-  async function deployFixture() {
-    const usdtFact = await ethers.getContractFactory("FaucetToken");
-    const usdtContract = await usdtFact.deploy();
-    await usdtContract.deployed();
-
-    const sleepFact = await ethers.getContractFactory("SleepToken");
-    const sleepContract = await sleepFact.deploy();
-    await sleepContract.deployed();
-
-    await sleepContract.mint(toWei("1000000"));
-    await usdtContract.mint(toWei("1000000"));
-
-    console.log("usdt contrac ", usdtContract.address);
-    const routerFactory = await ethers.getContractFactory("TestSwap");
-    const routerContract = await routerFactory.deploy(
-      usdtContract.address,
-      sleepContract.address
-    );
-    await routerContract.deployed();
-
-    // setup dummy swaps router with some tokens
-    await sleepContract.approve(routerContract.address, toWei("1000000"));
-    await routerContract.depositTokens(toWei("100000"));
-
-    const accumulationFactory = await ethers.getContractFactory(
-      "SleepSwapAccumulation"
-    );
-
-    const [owner, addr1, addr2] = await ethers.getSigners();
-
-    const accumulationContract = await accumulationFactory.deploy(
-      usdtContract.address,
-      routerContract.address
-    );
-
-    await accumulationContract.deployed();
-
-    await accumulationContract.enableTestMode();
-
-    // Fixtures can return anything you consider useful for your tests
-    return {
-      accumulationContract,
-      routerContract,
-      usdtContract,
-      sleepContract,
-      owner,
-      addr1,
-      addr2,
-    };
-  }
-
+describe("Accumulation with single user ", function () {
   it("Deployer must be the owner ", async function () {
     const { accumulationContract, owner } = await loadFixture(deployFixture);
 

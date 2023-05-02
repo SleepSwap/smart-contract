@@ -286,6 +286,7 @@ contract SleepSwapAccumulation is Ownable {
             poolBalance -= selected_order.fiatOrderAmount; // deduct usdt from pool on order executed
             selected_order.remainingAmount -= selected_order.fiatOrderAmount; // deduct usdt from order on order executed
 
+            // todo: remove this in production code
             uint256 token_received;
             if (testMode == 1) {
                 token_received = swapTokenFromUsdtTest(

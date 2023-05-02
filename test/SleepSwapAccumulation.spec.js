@@ -217,7 +217,7 @@ describe("Accumulation contract ", function () {
         accumulationContract.fee(),
       ]);
 
-    console.log("prev pool fee", { fee: prevFee.toString() });
+    // console.log("prev pool fee", { fee: prevFee.toString() });
     // execute 1st grid
     await accumulationContract.connect(owner).executeOrders([1]);
     const gridsExecuted = "1";
@@ -229,49 +229,67 @@ describe("Accumulation contract ", function () {
       accumulationContract.fee(),
     ]);
 
-    console.log("updated pool fee", { fee: updatedFee.toString() });
+    // console.log("updated pool fee", { fee: updatedFee.toString() });
     const userOrder = await accumulationContract.orders(1);
 
-    const usdtDeduction = new BigNumber(tokenInvested)
-      .div(grids)
+    const usdtForEachOrder = new BigNumber(tokenInvested).div(grids).toString();
+    const totalUsdtDeductions = new BigNumber(usdtForEachOrder)
       .multipliedBy(gridsExecuted)
       .toString();
-    const feeDeduction = new BigNumber(tokenInvested)
-      .div(grids)
+
+    const feeDeductionForEachOrder = new BigNumber(usdtForEachOrder)
       .multipliedBy(5)
       .div(10000)
       .toString();
-    const tokenRecieved = new BigNumber(tokenInvested)
-      .minus(feeDeduction)
-      .div(grids)
+    const totalFeeDeductions = new BigNumber(feeDeductionForEachOrder)
       .multipliedBy(gridsExecuted)
       .toString();
 
-    expect(poolUsdtBalance?.toString()).to.equal(
-      new BigNumber(prevPoolUsdtBalance.toString())
-        .minus(usdtDeduction)
-        .toString()
-    );
+    const tokensRecievedOnEachOrder = new BigNumber(usdtForEachOrder)
+      .minus(feeDeductionForEachOrder)
+      .toString();
+    const totalTokensRecieved = new BigNumber(tokensRecievedOnEachOrder)
+      .multipliedBy(gridsExecuted)
+      .toString();
+
+    // console.log("usdtForEachOrder calculated", usdtForEachOrder.toString());
+    // console.log(
+    //   "feeDeductionForEachOrder --> calculated ",
+    //   feeDeductionForEachOrder.toString()
+    // );
+    // console.log(
+    //   "tokensRecievedOnEachOrder: calculated ",
+    //   tokensRecievedOnEachOrder.toString()
+    // );
+
     expect(poolTokenBalance.toString()).to.equal(
       new BigNumber(prevPoolTokenBalance.toString())
-        .plus(tokenRecieved)
+        .plus(totalTokensRecieved)
         .toString()
     );
 
-    // expect(updatedFee.toString()).to.equal(
-    //   new BigNumber(prevFee.toString()).plus(feeDeduction).toString()
-    // );
+    expect(poolUsdtBalance?.toString()).to.equal(
+      new BigNumber(prevPoolUsdtBalance.toString())
+        .minus(totalUsdtDeductions)
+        .toString()
+    );
+
+    expect(updatedFee.toString()).to.equal(
+      new BigNumber(prevFee.toString()).plus(totalFeeDeductions).toString()
+    );
     expect(userOrder?.entryPrice?.toString()).to.equal(entryPrice);
     expect(userOrder?.prevPrice?.toString()).to.equal(entryPrice);
 
     expect(userOrder?.depositAmount?.toString()).to.equal(tokenInvested);
     expect(userOrder?.remainingAmount?.toString()).to.equal(
-      new BigNumber(tokenInvested).minus(usdtDeduction).toString()
+      new BigNumber(tokenInvested).minus(totalUsdtDeductions).toString()
     );
     expect(userOrder?.fiatOrderAmount?.toString()).to.equal(
       new BigNumber(tokenInvested).div(grids).toString()
     );
-    expect(userOrder?.tokenAccumulated?.toString()).to.equal(tokenRecieved);
+    expect(userOrder?.tokenAccumulated?.toString()).to.equal(
+      totalTokensRecieved
+    );
     expect(userOrder?.executedGrids?.toString()).to.equal(gridsExecuted);
     expect(userOrder?.open?.toString()).to.equal(openStatus);
   });
@@ -279,26 +297,27 @@ describe("Accumulation contract ", function () {
   it("order execution and values update checks: [2/5] grids executed", async function () {
     const { sleepContract, addr1, accumulationContract, usdtContract, owner } =
       await loadFixture(deployFixture);
-
-    await usdtContract.transfer(addr1.address, "1000");
+    await usdtContract.transfer(addr1.address, toWei("1000000"));
     await usdtContract
       .connect(addr1)
-      .approve(accumulationContract.address, "1000");
+      .approve(accumulationContract.address, toWei("1000000"));
 
-    const tokenInvested = "100";
+    const tokenInvested = toWei(100);
     const grids = "5";
     const percent = "10";
-    const entryPrice = "10";
+    const entryPrice = toWei(10, 8);
 
     await accumulationContract
       .connect(addr1)
       .invest(tokenInvested, grids, percent, entryPrice, sleepContract.address);
 
     // prev pool balances
-    const [prevPoolUsdtBalance, prevPoolTokenBalance] = await Promise.all([
-      accumulationContract.poolBalance(),
-      accumulationContract.poolTokenBalances(sleepContract.address),
-    ]);
+    const [prevPoolUsdtBalance, prevPoolTokenBalance, prevFee] =
+      await Promise.all([
+        accumulationContract.poolBalance(),
+        accumulationContract.poolTokenBalances(sleepContract.address),
+        accumulationContract.fee(),
+      ]);
 
     // execute 1st grid
     await accumulationContract.connect(owner).executeOrders([1]);
@@ -308,42 +327,62 @@ describe("Accumulation contract ", function () {
 
     // check contract pool updates
 
-    const [poolUsdtBalance, poolTokenBalance] = await Promise.all([
+    const [poolUsdtBalance, poolTokenBalance, updatedFee] = await Promise.all([
       accumulationContract.poolBalance(),
       accumulationContract.poolTokenBalances(sleepContract.address),
+      accumulationContract.fee(),
     ]);
+
     const userOrder = await accumulationContract.orders(1);
 
-    const usdtDeduction = new BigNumber(tokenInvested)
-      .div(grids)
+    const usdtForEachOrder = new BigNumber(tokenInvested).div(grids).toString();
+    const totalUsdtDeductions = new BigNumber(usdtForEachOrder)
       .multipliedBy(gridsExecuted)
       .toString();
-    const tokenRecieved = new BigNumber(tokenInvested)
-      .div(grids)
+
+    const feeDeductionForEachOrder = new BigNumber(usdtForEachOrder)
+      .multipliedBy(5)
+      .div(10000)
+      .toString();
+    const totalFeeDeductions = new BigNumber(feeDeductionForEachOrder)
       .multipliedBy(gridsExecuted)
       .toString();
+
+    const tokensRecievedOnEachOrder = new BigNumber(usdtForEachOrder)
+      .minus(feeDeductionForEachOrder)
+      .toString();
+    const totalTokensRecieved = new BigNumber(tokensRecievedOnEachOrder)
+      .multipliedBy(gridsExecuted)
+      .toString();
+
+    expect(poolTokenBalance.toString()).to.equal(
+      new BigNumber(prevPoolTokenBalance.toString())
+        .plus(totalTokensRecieved)
+        .toString()
+    );
 
     expect(poolUsdtBalance?.toString()).to.equal(
       new BigNumber(prevPoolUsdtBalance.toString())
-        .minus(usdtDeduction)
+        .minus(totalUsdtDeductions)
         .toString()
     );
-    expect(poolTokenBalance).to.equal(
-      new BigNumber(prevPoolTokenBalance.toString())
-        .plus(tokenRecieved)
-        .toString()
+
+    expect(updatedFee.toString()).to.equal(
+      new BigNumber(prevFee.toString()).plus(totalFeeDeductions).toString()
     );
     expect(userOrder?.entryPrice?.toString()).to.equal(entryPrice);
     expect(userOrder?.prevPrice?.toString()).to.equal(entryPrice);
 
     expect(userOrder?.depositAmount?.toString()).to.equal(tokenInvested);
     expect(userOrder?.remainingAmount?.toString()).to.equal(
-      new BigNumber(tokenInvested).minus(usdtDeduction).toString()
+      new BigNumber(tokenInvested).minus(totalUsdtDeductions).toString()
     );
     expect(userOrder?.fiatOrderAmount?.toString()).to.equal(
       new BigNumber(tokenInvested).div(grids).toString()
     );
-    expect(userOrder?.tokenAccumulated?.toString()).to.equal(tokenRecieved);
+    expect(userOrder?.tokenAccumulated?.toString()).to.equal(
+      totalTokensRecieved
+    );
     expect(userOrder?.executedGrids?.toString()).to.equal(gridsExecuted);
     expect(userOrder?.open?.toString()).to.equal(openStatus);
   });
@@ -352,25 +391,27 @@ describe("Accumulation contract ", function () {
     const { sleepContract, addr1, accumulationContract, usdtContract, owner } =
       await loadFixture(deployFixture);
 
-    await usdtContract.transfer(addr1.address, "1000");
+    await usdtContract.transfer(addr1.address, toWei("1000000"));
     await usdtContract
       .connect(addr1)
-      .approve(accumulationContract.address, "1000");
+      .approve(accumulationContract.address, toWei("1000000"));
 
-    const tokenInvested = "100";
+    const tokenInvested = toWei(100);
     const grids = "5";
     const percent = "10";
-    const entryPrice = "10";
+    const entryPrice = toWei(10, 8);
 
     await accumulationContract
       .connect(addr1)
       .invest(tokenInvested, grids, percent, entryPrice, sleepContract.address);
 
     // prev pool balances
-    const [prevPoolUsdtBalance, prevPoolTokenBalance] = await Promise.all([
-      accumulationContract.poolBalance(),
-      accumulationContract.poolTokenBalances(sleepContract.address),
-    ]);
+    const [prevPoolUsdtBalance, prevPoolTokenBalance, prevFee] =
+      await Promise.all([
+        accumulationContract.poolBalance(),
+        accumulationContract.poolTokenBalances(sleepContract.address),
+        accumulationContract.fee(),
+      ]);
 
     // execute 1st grid
     await accumulationContract.connect(owner).executeOrders([1]);
@@ -381,42 +422,62 @@ describe("Accumulation contract ", function () {
 
     // check contract pool updates
 
-    const [poolUsdtBalance, poolTokenBalance] = await Promise.all([
+    const [poolUsdtBalance, poolTokenBalance, updatedFee] = await Promise.all([
       accumulationContract.poolBalance(),
       accumulationContract.poolTokenBalances(sleepContract.address),
+      accumulationContract.fee(),
     ]);
+
     const userOrder = await accumulationContract.orders(1);
 
-    const usdtDeduction = new BigNumber(tokenInvested)
-      .div(grids)
+    const usdtForEachOrder = new BigNumber(tokenInvested).div(grids).toString();
+    const totalUsdtDeductions = new BigNumber(usdtForEachOrder)
       .multipliedBy(gridsExecuted)
       .toString();
-    const tokenRecieved = new BigNumber(tokenInvested)
-      .div(grids)
+
+    const feeDeductionForEachOrder = new BigNumber(usdtForEachOrder)
+      .multipliedBy(5)
+      .div(10000)
+      .toString();
+    const totalFeeDeductions = new BigNumber(feeDeductionForEachOrder)
       .multipliedBy(gridsExecuted)
       .toString();
+
+    const tokensRecievedOnEachOrder = new BigNumber(usdtForEachOrder)
+      .minus(feeDeductionForEachOrder)
+      .toString();
+    const totalTokensRecieved = new BigNumber(tokensRecievedOnEachOrder)
+      .multipliedBy(gridsExecuted)
+      .toString();
+
+    expect(poolTokenBalance.toString()).to.equal(
+      new BigNumber(prevPoolTokenBalance.toString())
+        .plus(totalTokensRecieved)
+        .toString()
+    );
 
     expect(poolUsdtBalance?.toString()).to.equal(
       new BigNumber(prevPoolUsdtBalance.toString())
-        .minus(usdtDeduction)
+        .minus(totalUsdtDeductions)
         .toString()
     );
-    expect(poolTokenBalance).to.equal(
-      new BigNumber(prevPoolTokenBalance.toString())
-        .plus(tokenRecieved)
-        .toString()
+
+    expect(updatedFee.toString()).to.equal(
+      new BigNumber(prevFee.toString()).plus(totalFeeDeductions).toString()
     );
     expect(userOrder?.entryPrice?.toString()).to.equal(entryPrice);
     expect(userOrder?.prevPrice?.toString()).to.equal(entryPrice);
 
     expect(userOrder?.depositAmount?.toString()).to.equal(tokenInvested);
     expect(userOrder?.remainingAmount?.toString()).to.equal(
-      new BigNumber(tokenInvested).minus(usdtDeduction).toString()
+      new BigNumber(tokenInvested).minus(totalUsdtDeductions).toString()
     );
     expect(userOrder?.fiatOrderAmount?.toString()).to.equal(
       new BigNumber(tokenInvested).div(grids).toString()
     );
-    expect(userOrder?.tokenAccumulated?.toString()).to.equal(tokenRecieved);
+    expect(userOrder?.tokenAccumulated?.toString()).to.equal(
+      totalTokensRecieved
+    );
     expect(userOrder?.executedGrids?.toString()).to.equal(gridsExecuted);
     expect(userOrder?.open?.toString()).to.equal(openStatus);
   });
@@ -425,25 +486,27 @@ describe("Accumulation contract ", function () {
     const { sleepContract, addr1, accumulationContract, usdtContract, owner } =
       await loadFixture(deployFixture);
 
-    await usdtContract.transfer(addr1.address, "1000");
+    await usdtContract.transfer(addr1.address, toWei("1000000"));
     await usdtContract
       .connect(addr1)
-      .approve(accumulationContract.address, "1000");
+      .approve(accumulationContract.address, toWei("1000000"));
 
-    const tokenInvested = "100";
+    const tokenInvested = toWei(100);
     const grids = "5";
     const percent = "10";
-    const entryPrice = "10";
+    const entryPrice = toWei(10, 8);
 
     await accumulationContract
       .connect(addr1)
       .invest(tokenInvested, grids, percent, entryPrice, sleepContract.address);
 
     // prev pool balances
-    const [prevPoolUsdtBalance, prevPoolTokenBalance] = await Promise.all([
-      accumulationContract.poolBalance(),
-      accumulationContract.poolTokenBalances(sleepContract.address),
-    ]);
+    const [prevPoolUsdtBalance, prevPoolTokenBalance, prevFee] =
+      await Promise.all([
+        accumulationContract.poolBalance(),
+        accumulationContract.poolTokenBalances(sleepContract.address),
+        accumulationContract.fee(),
+      ]);
 
     // execute 1st grid
     await accumulationContract.connect(owner).executeOrders([1]);
@@ -455,42 +518,62 @@ describe("Accumulation contract ", function () {
 
     // check contract pool updates
 
-    const [poolUsdtBalance, poolTokenBalance] = await Promise.all([
+    const [poolUsdtBalance, poolTokenBalance, updatedFee] = await Promise.all([
       accumulationContract.poolBalance(),
       accumulationContract.poolTokenBalances(sleepContract.address),
+      accumulationContract.fee(),
     ]);
+
     const userOrder = await accumulationContract.orders(1);
 
-    const usdtDeduction = new BigNumber(tokenInvested)
-      .div(grids)
+    const usdtForEachOrder = new BigNumber(tokenInvested).div(grids).toString();
+    const totalUsdtDeductions = new BigNumber(usdtForEachOrder)
       .multipliedBy(gridsExecuted)
       .toString();
-    const tokenRecieved = new BigNumber(tokenInvested)
-      .div(grids)
+
+    const feeDeductionForEachOrder = new BigNumber(usdtForEachOrder)
+      .multipliedBy(5)
+      .div(10000)
+      .toString();
+    const totalFeeDeductions = new BigNumber(feeDeductionForEachOrder)
       .multipliedBy(gridsExecuted)
       .toString();
+
+    const tokensRecievedOnEachOrder = new BigNumber(usdtForEachOrder)
+      .minus(feeDeductionForEachOrder)
+      .toString();
+    const totalTokensRecieved = new BigNumber(tokensRecievedOnEachOrder)
+      .multipliedBy(gridsExecuted)
+      .toString();
+
+    expect(poolTokenBalance.toString()).to.equal(
+      new BigNumber(prevPoolTokenBalance.toString())
+        .plus(totalTokensRecieved)
+        .toString()
+    );
 
     expect(poolUsdtBalance?.toString()).to.equal(
       new BigNumber(prevPoolUsdtBalance.toString())
-        .minus(usdtDeduction)
+        .minus(totalUsdtDeductions)
         .toString()
     );
-    expect(poolTokenBalance).to.equal(
-      new BigNumber(prevPoolTokenBalance.toString())
-        .plus(tokenRecieved)
-        .toString()
+
+    expect(updatedFee.toString()).to.equal(
+      new BigNumber(prevFee.toString()).plus(totalFeeDeductions).toString()
     );
     expect(userOrder?.entryPrice?.toString()).to.equal(entryPrice);
     expect(userOrder?.prevPrice?.toString()).to.equal(entryPrice);
 
     expect(userOrder?.depositAmount?.toString()).to.equal(tokenInvested);
     expect(userOrder?.remainingAmount?.toString()).to.equal(
-      new BigNumber(tokenInvested).minus(usdtDeduction).toString()
+      new BigNumber(tokenInvested).minus(totalUsdtDeductions).toString()
     );
     expect(userOrder?.fiatOrderAmount?.toString()).to.equal(
       new BigNumber(tokenInvested).div(grids).toString()
     );
-    expect(userOrder?.tokenAccumulated?.toString()).to.equal(tokenRecieved);
+    expect(userOrder?.tokenAccumulated?.toString()).to.equal(
+      totalTokensRecieved
+    );
     expect(userOrder?.executedGrids?.toString()).to.equal(gridsExecuted);
     expect(userOrder?.open?.toString()).to.equal(openStatus);
   });
@@ -499,25 +582,27 @@ describe("Accumulation contract ", function () {
     const { sleepContract, addr1, accumulationContract, usdtContract, owner } =
       await loadFixture(deployFixture);
 
-    await usdtContract.transfer(addr1.address, "1000");
+    await usdtContract.transfer(addr1.address, toWei("1000000"));
     await usdtContract
       .connect(addr1)
-      .approve(accumulationContract.address, "1000");
+      .approve(accumulationContract.address, toWei("1000000"));
 
-    const tokenInvested = "100";
+    const tokenInvested = toWei(100);
     const grids = "5";
     const percent = "10";
-    const entryPrice = "10";
+    const entryPrice = toWei(10, 8);
 
     await accumulationContract
       .connect(addr1)
       .invest(tokenInvested, grids, percent, entryPrice, sleepContract.address);
 
     // prev pool balances
-    const [prevPoolUsdtBalance, prevPoolTokenBalance] = await Promise.all([
-      accumulationContract.poolBalance(),
-      accumulationContract.poolTokenBalances(sleepContract.address),
-    ]);
+    const [prevPoolUsdtBalance, prevPoolTokenBalance, prevFee] =
+      await Promise.all([
+        accumulationContract.poolBalance(),
+        accumulationContract.poolTokenBalances(sleepContract.address),
+        accumulationContract.fee(),
+      ]);
 
     // execute 1st grid
     await accumulationContract.connect(owner).executeOrders([1]);
@@ -530,42 +615,62 @@ describe("Accumulation contract ", function () {
 
     // check contract pool updates
 
-    const [poolUsdtBalance, poolTokenBalance] = await Promise.all([
+    const [poolUsdtBalance, poolTokenBalance, updatedFee] = await Promise.all([
       accumulationContract.poolBalance(),
       accumulationContract.poolTokenBalances(sleepContract.address),
+      accumulationContract.fee(),
     ]);
+
     const userOrder = await accumulationContract.orders(1);
 
-    const usdtDeduction = new BigNumber(tokenInvested)
-      .div(grids)
+    const usdtForEachOrder = new BigNumber(tokenInvested).div(grids).toString();
+    const totalUsdtDeductions = new BigNumber(usdtForEachOrder)
       .multipliedBy(gridsExecuted)
       .toString();
-    const tokenRecieved = new BigNumber(tokenInvested)
-      .div(grids)
+
+    const feeDeductionForEachOrder = new BigNumber(usdtForEachOrder)
+      .multipliedBy(5)
+      .div(10000)
+      .toString();
+    const totalFeeDeductions = new BigNumber(feeDeductionForEachOrder)
       .multipliedBy(gridsExecuted)
       .toString();
+
+    const tokensRecievedOnEachOrder = new BigNumber(usdtForEachOrder)
+      .minus(feeDeductionForEachOrder)
+      .toString();
+    const totalTokensRecieved = new BigNumber(tokensRecievedOnEachOrder)
+      .multipliedBy(gridsExecuted)
+      .toString();
+
+    expect(poolTokenBalance.toString()).to.equal(
+      new BigNumber(prevPoolTokenBalance.toString())
+        .plus(totalTokensRecieved)
+        .toString()
+    );
 
     expect(poolUsdtBalance?.toString()).to.equal(
       new BigNumber(prevPoolUsdtBalance.toString())
-        .minus(usdtDeduction)
+        .minus(totalUsdtDeductions)
         .toString()
     );
-    expect(poolTokenBalance).to.equal(
-      new BigNumber(prevPoolTokenBalance.toString())
-        .plus(tokenRecieved)
-        .toString()
+
+    expect(updatedFee.toString()).to.equal(
+      new BigNumber(prevFee.toString()).plus(totalFeeDeductions).toString()
     );
     expect(userOrder?.entryPrice?.toString()).to.equal(entryPrice);
     expect(userOrder?.prevPrice?.toString()).to.equal(entryPrice);
 
     expect(userOrder?.depositAmount?.toString()).to.equal(tokenInvested);
     expect(userOrder?.remainingAmount?.toString()).to.equal(
-      new BigNumber(tokenInvested).minus(usdtDeduction).toString()
+      new BigNumber(tokenInvested).minus(totalUsdtDeductions).toString()
     );
     expect(userOrder?.fiatOrderAmount?.toString()).to.equal(
       new BigNumber(tokenInvested).div(grids).toString()
     );
-    expect(userOrder?.tokenAccumulated?.toString()).to.equal(tokenRecieved);
+    expect(userOrder?.tokenAccumulated?.toString()).to.equal(
+      totalTokensRecieved
+    );
     expect(userOrder?.executedGrids?.toString()).to.equal(gridsExecuted);
     expect(userOrder?.open?.toString()).to.equal(openStatus);
   });

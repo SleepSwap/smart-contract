@@ -222,6 +222,43 @@ contract SleepSwapAccumulation is Ownable {
         );
     }
 
+    function withdrawByOrderId(uint256 _orderId) public {
+        // if order id exists
+        require(orders[_orderId].user != address(0), "Invalid order id!");
+
+        Order storage _order = orders[_orderId];
+
+        if (_order.open) {
+            // deduct usdt from order
+            uint256 orderUsdt = _order.remainingAmount;
+            _order.remainingAmount = 0;
+            _order.open = false;
+            // deduct usdt from pool
+            poolBalance -= orderUsdt;
+
+            IERC20(usdtAddress).transfer(msg.sender, orderUsdt);
+        }
+
+        // deduct tokens from order if any
+        uint256 orderToken = _order.tokenAccumulated;
+
+        if (orderToken > 0) {
+            // deduct tokens from order
+            _order.tokenAccumulated = 0;
+
+            // deduct tokens from pool
+            poolTokenBalances[_order.tokenAddress] -= orderToken;
+
+            IERC20(_order.tokenAddress).transfer(msg.sender, orderToken);
+        }
+
+        emit OrderCancelled(
+            _order.orderId,
+            _order.executedGrids,
+            _order.remainingAmount
+        );
+    }
+
     function withdraw(address _tokenAddress) public {
         uint256[] storage user_orders = userOrders[msg.sender][_tokenAddress];
 
@@ -337,33 +374,5 @@ contract SleepSwapAccumulation is Ownable {
         uint256 usdtToWithdraw = poolBalance;
         poolBalance = 0;
         IERC20(usdtAddress).transfer(msg.sender, usdtToWithdraw);
-    }
-
-    function emergencyWithdrawByOrderId(uint256 _orderId) public onlyOwner {
-        // if order id exists
-        require(orders[_orderId].user != address(0), "Invalid order id!");
-
-        Order storage _order = orders[_orderId];
-
-        // deduct usdt from order
-        uint256 orderUsdt = _order.remainingAmount;
-        _order.remainingAmount = 0;
-        _order.open = false;
-        // deduct usdt from pool
-        poolBalance -= orderUsdt;
-
-        // deduct tokens from order if any
-        uint256 orderToken = _order.tokenAccumulated;
-
-        if (orderToken > 0) {
-            // deduct tokens from order
-            _order.tokenAccumulated = 0;
-
-            // deduct tokens from pool
-            poolTokenBalances[_order.tokenAddress] -= orderToken;
-
-            IERC20(_order.tokenAddress).transfer(msg.sender, orderToken);
-        }
-        IERC20(usdtAddress).transfer(msg.sender, orderUsdt);
     }
 }

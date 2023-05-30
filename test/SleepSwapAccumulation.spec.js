@@ -623,6 +623,64 @@ describe("Accumulation with single user ", function () {
     expect(userOrder?.open?.toString()).to.equal(openStatus);
   });
 
+  it("withdrawByOrderId revert withdraw when try withdraw other orders", async function () {
+    const { sleepContract, addr1, addr2, accumulationContract, usdtContract } =
+      await loadFixture(deployFixture);
+
+    const usdtBalance = toWei("1000000");
+    const tokenBalance = toWei("0");
+
+    await usdtContract.transfer(addr1.address, toWei("1000000"));
+    await usdtContract
+      .connect(addr1)
+      .approve(accumulationContract.address, toWei("1000000"));
+
+    const tokenInvested = toWei(100);
+    const grids = "5";
+    const percent = "10";
+    const entryPrice = toWei(10, 8);
+
+    await accumulationContract
+      .connect(addr1)
+      .invest(tokenInvested, grids, percent, entryPrice, sleepContract.address);
+
+    await expect(
+      accumulationContract.connect(addr2).withdrawByOrderId(1)
+    ).to.be.revertedWith("Can't withdraw others order!");
+  });
+
+  it("withdrawByOrderId revert withdraw when owner try withdraw by order id", async function () {
+    const {
+      sleepContract,
+      owner,
+      addr1,
+      addr2,
+      accumulationContract,
+      usdtContract,
+    } = await loadFixture(deployFixture);
+
+    const usdtBalance = toWei("1000000");
+    const tokenBalance = toWei("0");
+
+    await usdtContract.transfer(addr1.address, toWei("1000000"));
+    await usdtContract
+      .connect(addr1)
+      .approve(accumulationContract.address, toWei("1000000"));
+
+    const tokenInvested = toWei(100);
+    const grids = "5";
+    const percent = "10";
+    const entryPrice = toWei(10, 8);
+
+    await accumulationContract
+      .connect(addr1)
+      .invest(tokenInvested, grids, percent, entryPrice, sleepContract.address);
+
+    await expect(
+      accumulationContract.connect(owner).withdrawByOrderId(1)
+    ).to.be.revertedWith("Can't withdraw others order!");
+  });
+
   it("withdrawByOrderId when no order executed: should  withdraw tokens", async function () {
     const { sleepContract, addr1, accumulationContract, usdtContract } =
       await loadFixture(deployFixture);
@@ -660,10 +718,7 @@ describe("Accumulation with single user ", function () {
 
     // execute 1st grid
     await accumulationContract.connect(addr1).withdrawByOrderId(1);
-    // await accumulationContract.connect(owner).executeOrders([1]);
-    // await accumulationContract.connect(owner).executeOrders([1]);
-    // await accumulationContract.connect(owner).executeOrders([1]);
-    // await accumulationContract.connect(owner).executeOrders([1]);
+
     const gridsExecuted = "0";
     const openStatus = "false";
 
@@ -778,15 +833,14 @@ describe("Accumulation with single user ", function () {
       .connect(addr1)
       .invest(tokenInvested, grids, percent, entryPrice, sleepContract.address);
 
-    console.log("user prev usdt bal ", userUsdtBalancePrev.toString());
-    console.log("user prev token bal ", userTokenBalancePrev.toString());
+    // console.log("user prev usdt bal ", userUsdtBalancePrev.toString());
+    // console.log("user prev token bal ", userTokenBalancePrev.toString());
 
     // execute 1st grid
     await accumulationContract.connect(owner).executeOrders([1]);
     await accumulationContract.connect(owner).executeOrders([1]);
     await accumulationContract.connect(addr1).withdrawByOrderId(1);
-    // await accumulationContract.connect(owner).executeOrders([1]);
-    // await accumulationContract.connect(owner).executeOrders([1]);
+
     const gridsExecuted = "2";
     const openStatus = "false";
 
@@ -884,14 +938,14 @@ describe("Accumulation with single user ", function () {
       ]);
 
     const userUsdtBalancePrev = await usdtContract.balanceOf(addr1.address);
-    const userTokenBalancePrev = await sleepContract.balanceOf(addr1.address);
+    // const userTokenBalancePrev = await sleepContract.balanceOf(addr1.address);
 
     await accumulationContract
       .connect(addr1)
       .invest(tokenInvested, grids, percent, entryPrice, sleepContract.address);
 
-    console.log("user prev usdt bal ", userUsdtBalancePrev.toString());
-    console.log("user prev token bal ", userTokenBalancePrev.toString());
+    // console.log("user prev usdt bal ", userUsdtBalancePrev.toString());
+    // console.log("user prev token bal ", userTokenBalancePrev.toString());
 
     // execute 1st grid
     await accumulationContract.connect(owner).executeOrders([1]);

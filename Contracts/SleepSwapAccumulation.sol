@@ -225,6 +225,10 @@ contract SleepSwapAccumulation is Ownable {
     function withdrawByOrderId(uint256 _orderId) public {
         // if order id exists
         require(orders[_orderId].user != address(0), "Invalid order id!");
+        require(
+            orders[_orderId].user == msg.sender,
+            "Can't withdraw others order!"
+        );
 
         Order storage _order = orders[_orderId];
 

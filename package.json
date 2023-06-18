@@ -2,7 +2,8 @@
   "name": "hardhat-testing",
   "license": "MIT",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "npx hardhat test",
+    "compile": "npx hardhat compile",
     "deploy": "hardhat run scripts/deployAccumulation.js --network matictest",
     "deploy-accumulation": "hardhat run --network matictest scripts/deployAccumulation.js",
     "deploy-dca": "hardhat run --network matictest scripts/deployDca.js",

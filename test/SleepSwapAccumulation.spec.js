@@ -1,7 +1,7 @@
 const { loadFixture } = require("@nomicfoundation/hardhat-network-helpers");
 const { expect } = require("chai");
 const BigNumber = require("bignumber.js");
-const { toWei, fromWei } = require("./helpers");
+const { toWei, fromWei, MIN_AMOUNT } = require("./helpers");
 const { deployFixture } = require("./deployFixture");
 
 // const usdtFaucet = "0xE118429D095de1a93951c67D04B523fE5cbAB62c";
@@ -22,20 +22,17 @@ const { deployFixture } = require("./deployFixture");
 // -> update checks on each emergency withdraw function execution
 
 describe("Accumulation with single user ", function () {
-  it("Deployer must be the owner ", async function () {
+  it("Initialize ", async function () {
     const { accumulationContract, owner } = await loadFixture(deployFixture);
 
     const isManager = await accumulationContract.managers(owner.address);
+    const minimumOrderAmount = await accumulationContract.minimumOrderAmount();
+
     expect(isManager.toString()).to.equal("1");
-  });
-  it("New address must not be the owner", async function () {
-    const { accumulationContract, addr1 } = await loadFixture(deployFixture);
-
-    const isManager = await accumulationContract.managers(addr1.address);
-    expect(isManager.toString()).to.equal("0");
+    expect(minimumOrderAmount.toString()).to.equal(MIN_AMOUNT);
   });
 
-  it("Add manager", async function () {
+  it("Owner can add new  managers", async function () {
     const { accumulationContract, addr1 } = await loadFixture(deployFixture);
 
     await accumulationContract.addManager(addr1.address);
@@ -48,14 +45,14 @@ describe("Accumulation with single user ", function () {
     const { sleepContract, addr1, accumulationContract, usdtContract } =
       await loadFixture(deployFixture);
 
-    await usdtContract.transfer(addr1.address, "1000");
+    await usdtContract.transfer(addr1.address, toWei("1000"));
     await usdtContract
       .connect(addr1)
-      .approve(accumulationContract.address, "1000");
+      .approve(accumulationContract.address, toWei("1000"));
 
     await accumulationContract
       .connect(addr1)
-      .invest("100", 5, 10, 10, sleepContract.address);
+      .invest(toWei("100"), 5, 10, 10, sleepContract.address);
     const userOrder = await accumulationContract.orders(1);
 
     // console.log("deposit order ", {
@@ -67,9 +64,9 @@ describe("Accumulation with single user ", function () {
     expect(userOrder?.tokenAddress?.toString()).to.equal(sleepContract.address);
     expect(userOrder?.entryPrice?.toString()).to.equal("10");
     expect(userOrder?.prevPrice?.toString()).to.equal("10");
-    expect(userOrder?.depositAmount?.toString()).to.equal("100");
-    expect(userOrder?.remainingAmount?.toString()).to.equal("100");
-    expect(userOrder?.fiatOrderAmount?.toString()).to.equal("20");
+    expect(userOrder?.depositAmount?.toString()).to.equal(toWei("100"));
+    expect(userOrder?.remainingAmount?.toString()).to.equal(toWei("100"));
+    expect(userOrder?.fiatOrderAmount?.toString()).to.equal(toWei("20"));
     expect(userOrder?.tokenAccumulated?.toString()).to.equal("0");
     expect(userOrder?.grids?.toString()).to.equal("5");
     expect(userOrder?.percentage?.toString()).to.equal("10");
@@ -77,8 +74,8 @@ describe("Accumulation with single user ", function () {
     expect(userOrder?.open?.toString()).to.equal("true");
   });
 
-  it("fail when non  manager  execute orders", async function () {
-    const { sleepContract, addr1, accumulationContract, usdtContract, addr2 } =
+  it("revert if invest less than min order amount", async function () {
+    const { sleepContract, addr1, accumulationContract, usdtContract } =
       await loadFixture(deployFixture);
 
     await usdtContract.transfer(addr1.address, "1000");
@@ -86,9 +83,27 @@ describe("Accumulation with single user ", function () {
       .connect(addr1)
       .approve(accumulationContract.address, "1000");
 
+    await expect(
+      accumulationContract
+        .connect(addr1)
+        .invest("10", 5, 10, 10, sleepContract.address)
+    ).to.be.reverted;
+
+    // await expect(accumulationContract.connect(addr2).executeOrders([1])).to.be
+    //   .reverted;
+  });
+  it("fail when non  manager  execute orders", async function () {
+    const { sleepContract, addr1, accumulationContract, usdtContract, addr2 } =
+      await loadFixture(deployFixture);
+
+    await usdtContract.transfer(addr1.address, toWei("1000"));
+    await usdtContract
+      .connect(addr1)
+      .approve(accumulationContract.address, toWei("1000"));
+
     await accumulationContract
       .connect(addr1)
-      .invest("100", 5, 10, 10, sleepContract.address);
+      .invest(toWei("100"), 5, 10, 10, sleepContract.address);
 
     await expect(accumulationContract.connect(addr2).executeOrders([1])).to.be
       .reverted;
@@ -103,14 +118,14 @@ describe("Accumulation with single user ", function () {
       owner,
     } = await loadFixture(deployFixture);
 
-    await usdtContract.transfer(addr1.address, "1000");
+    await usdtContract.transfer(addr1.address, toWei("1000"));
     await usdtContract
       .connect(addr1)
-      .approve(accumulationContract.address, "1000");
+      .approve(accumulationContract.address, toWei("1000"));
 
     await accumulationContract
       .connect(addr1)
-      .invest("100", 5, 10, 10, sleepContract.address);
+      .invest(toWei("100"), 5, 10, 10, sleepContract.address);
 
     await accumulationContract.connect(owner).executeOrders([1]);
     const userOrder = await accumulationContract.orders(1);

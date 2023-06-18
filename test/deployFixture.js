@@ -1,5 +1,10 @@
 const { ethers } = require("hardhat");
-const { toWei } = require("./helpers");
+const {
+  toWei,
+  MIN_AMOUNT,
+  MIN_GRIDS,
+  MIN_PERCENT_CHANGE,
+} = require("./helpers");
 
 // prepare dummy contract data
 async function deployFixture() {
@@ -27,19 +32,20 @@ async function deployFixture() {
   await routerContract.depositTokens(toWei("100000"));
 
   const accumulationFactory = await ethers.getContractFactory(
-    "SleepSwapAccumulation"
+    "SleepSwapAccumulationTest"
   );
 
   const [owner, addr1, addr2] = await ethers.getSigners();
 
   const accumulationContract = await accumulationFactory.deploy(
     usdtContract.address,
-    routerContract.address
+    routerContract.address,
+    MIN_AMOUNT,
+    MIN_GRIDS,
+    MIN_PERCENT_CHANGE
   );
 
   await accumulationContract.deployed();
-
-  await accumulationContract.enableTestMode();
 
   // Fixtures can return anything you consider useful for your tests
   return {

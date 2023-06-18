@@ -30,4 +30,8 @@ function toWei(tokens, decimals = 18) {
   }
 }
 
-module.exports = { fromWei, toWei };
+const MIN_AMOUNT = toWei("50");
+const MIN_GRIDS = 4;
+const MIN_PERCENT_CHANGE = 10;
+
+module.exports = { fromWei, toWei, MIN_AMOUNT, MIN_GRIDS, MIN_PERCENT_CHANGE };

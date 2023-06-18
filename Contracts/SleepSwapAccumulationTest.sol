@@ -8,11 +8,12 @@ import "@uniswap/v3-periphery/contracts/libraries/TransferHelper.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "./TestSwap.sol";
 
 // BASE TOKEN; USDT - usdtToken
 // TRADE TOKENL: ERC20 - tokenAmount
 
-contract SleepSwapAccumulation is Ownable {
+contract SleepSwapAccumulationTest is Ownable {
     using SafeCast for int256;
     using SafeMath for uint256;
     string public name = "SleepSwap Accumulation";
@@ -24,11 +25,11 @@ contract SleepSwapAccumulation is Ownable {
     mapping(address => uint256) public poolTokenBalances; // balance mapping for all tokens
 
 
-    uint256 public fee;
     // Fees 0.005%
+    uint256 public fee;
     uint256 public feePercent = 5;
 
-      // minimum order amount
+    // minimum order amount
     uint256 public minimumOrderAmount;
     uint256 public minimumGrids;
     uint256 public minimumPercentChange;
@@ -96,10 +97,13 @@ contract SleepSwapAccumulation is Ownable {
     );
 
     // init contract
-    constructor(address _usdtAddress, address _swapRouter) {
+    constructor(address _usdtAddress, address _swapRouter, uint256 _minimumOrderAmount, uint256 _minGrids, uint256 _minPercent) {
         usdtAddress = _usdtAddress;
         swapRouter = _swapRouter;
         managers[msg.sender] = 1;
+        minimumOrderAmount = _minimumOrderAmount;
+        minimumGrids = _minGrids;
+        minimumPercentChange = _minPercent;
     }
 
     //modifiers
@@ -108,14 +112,16 @@ contract SleepSwapAccumulation is Ownable {
         _;
     }
 
+
     function addManager(address _manager) public onlyOwner {
         managers[_manager] = 1;
     }
 
     function updateFeePercent(uint256 _newFeePercent) public onlyOwner {
+        require(_newFeePercent > 0 , "Invalid _newFeePercent!");
+
         feePercent = _newFeePercent;
     }
-
 
     function updateMinimumOrderAmount(uint256 _amount) public onlyOwner {
         require(_amount > 0 , "Invalid amount!");
@@ -135,6 +141,7 @@ contract SleepSwapAccumulation is Ownable {
         minimumPercentChange = _percentChange;
     }
 
+    
 
     function swapTokenFromUsdt(
         uint256 _amountIn,
@@ -169,6 +176,26 @@ contract SleepSwapAccumulation is Ownable {
         amountOut = ISwapRouter(swapRouter).exactInputSingle(params);
     }
 
+    // function to be used for testing swaps
+    function swapTokenFromUsdtTest(
+        uint256 _amountIn,
+        address _tokenAddress
+    ) internal returns (uint256 amountOut) {
+        // Fee deduction
+        uint256 order_fee = _amountIn.mul(feePercent).div(10000);
+        fee += order_fee;
+        uint256 usdt_for_trade = _amountIn - order_fee;
+
+        address from_token = usdtAddress;
+        address to_token = _tokenAddress;
+
+        // Approve the router to spend USDT.
+        TransferHelper.safeApprove(from_token, swapRouter, usdt_for_trade);
+
+        // test version of swap
+        amountOut = TestSwap(swapRouter).swapFromUsdt(usdt_for_trade);
+    }
+
     function invest(
         uint256 _amount,
         uint256 _grids,
@@ -176,12 +203,13 @@ contract SleepSwapAccumulation is Ownable {
         uint256 _entryPrice,
         address _tokenAddress
     ) public {
-
+        
         require(_amount >= minimumOrderAmount, "amount less than min limit!");
         require(_grids >= minimumGrids, "grids less than min limit!");
         require(_percentage >= minimumPercentChange, "percent change less than min limit!");
         require(_entryPrice > 0, "Invalid entry price!");
         require(_tokenAddress !=  address(0), "Invalid entry price!");
+
 
         // Transfer the specified amount of USDT to this contract.
         TransferHelper.safeTransferFrom(
@@ -329,8 +357,8 @@ contract SleepSwapAccumulation is Ownable {
             poolBalance -= selected_order.fiatOrderAmount; // deduct usdt from pool on order executed
             selected_order.remainingAmount -= selected_order.fiatOrderAmount; // deduct usdt from order on order executed
 
-           // swap tokens from uniswap
-            uint256  token_received = swapTokenFromUsdt(
+            // todo: remove this in production code
+            uint256 token_received = swapTokenFromUsdtTest(
                     selected_order.fiatOrderAmount,
                     selected_order.tokenAddress
                 );

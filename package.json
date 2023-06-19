@@ -10,7 +10,7 @@
     "deploy-faucets": "hardhat run --network matictest scripts/deployFaucet.js",
     "verify-contract-faucet": "hardhat verify --contract contracts/ERC20Faucet.sol:FaucetToken --network matictest 0xE118429D095de1a93951c67D04B523fE5cbAB62c",
     "verify-contract-sleep": "hardhat verify --contract contracts/ERC20Sleep.sol:SleepToken --network matictest 0xb94d207a3fBdb312cef2e5dBEb7C22A76516BE37",
-    "verify-contract-accumulation": "hardhat verify --network matictest 0x6a659bE81b515aec146839d423901BcE91D116A2 0xE118429D095de1a93951c67D04B523fE5cbAB62c 0xE592427A0AEce92De3Edee1F18E0157C05861564",
+    "verify-contract-accumulation": "hardhat verify --network matictest 0xD26E48de5356162E72CE66cF94075D205B196d7a 0xE118429D095de1a93951c67D04B523fE5cbAB62c 0xE592427A0AEce92De3Edee1F18E0157C05861564 50000000000000000000 4 10",
     "verify-contract-dca-matictest": "hardhat verify --network matictest 0xe176bEAa35E2E7D7e1d0fB4beAe524fFAFdBfEE0 0xE118429D095de1a93951c67D04B523fE5cbAB62c 0xE592427A0AEce92De3Edee1F18E0157C05861564",
     "clean": "hardhat clean",
     "solhint": "./node_modules/.bin/solhint -f table contracts/**/*.sol"

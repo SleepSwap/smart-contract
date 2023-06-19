@@ -21,10 +21,7 @@ async function deployFixture() {
 
   console.log("usdt contrac ", usdtContract.address);
   const routerFactory = await ethers.getContractFactory("TestSwap");
-  const routerContract = await routerFactory.deploy(
-    usdtContract.address,
-    sleepContract.address
-  );
+  const routerContract = await routerFactory.deploy(usdtContract.address, sleepContract.address);
   await routerContract.deployed();
 
   // setup dummy swaps router with some tokens
@@ -35,6 +32,7 @@ async function deployFixture() {
     "SleepSwapAccumulationTest"
   );
 
+  const dcaFactory = await ethers.getContractFactory("SleepSwapDcaWithTestSwap");
   const [owner, addr1, addr2] = await ethers.getSigners();
 
   const accumulationContract = await accumulationFactory.deploy(
@@ -47,9 +45,12 @@ async function deployFixture() {
 
   await accumulationContract.deployed();
 
+  const dcaContract = await dcaFactory.deploy(usdtContract.address, routerContract.address);
+  await dcaContract.deployed();
   // Fixtures can return anything you consider useful for your tests
   return {
     accumulationContract,
+    dcaContract,
     routerContract,
     usdtContract,
     sleepContract,

@@ -1,4 +1,9 @@
 const { ethers } = require("hardhat");
+const {
+  MIN_AMOUNT,
+  MIN_GRIDS,
+  MIN_PERCENT_CHANGE,
+} = require("../test/helpers");
 
 async function main() {
   const accumulationFactory = await ethers.getContractFactory(
@@ -10,7 +15,10 @@ async function main() {
 
   const accumulation = await accumulationFactory.deploy(
     usdtFaucet,
-    routerAddress
+    routerAddress,
+    MIN_AMOUNT,
+    MIN_GRIDS,
+    MIN_PERCENT_CHANGE
   );
   await accumulation.deployed();
   console.log("Accumulation:", accumulation.address);

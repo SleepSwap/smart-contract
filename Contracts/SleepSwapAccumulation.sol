@@ -96,10 +96,13 @@ contract SleepSwapAccumulation is Ownable {
     );
 
     // init contract
-    constructor(address _usdtAddress, address _swapRouter) {
+    constructor(address _usdtAddress, address _swapRouter, uint256 _minimumOrderAmount, uint256 _minGrids, uint256 _minPercent) {
         usdtAddress = _usdtAddress;
         swapRouter = _swapRouter;
         managers[msg.sender] = 1;
+        minimumOrderAmount = _minimumOrderAmount;
+        minimumGrids = _minGrids;
+        minimumPercentChange = _minPercent;
     }
 
     //modifiers

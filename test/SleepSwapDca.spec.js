@@ -1,7 +1,7 @@
 const { loadFixture, time } = require("@nomicfoundation/hardhat-network-helpers");
 const { expect } = require("chai");
 const BigNumber = require("bignumber.js");
-const { toWei, fromWei, increaseTimeOnProvider } = require("./helpers");
+const { toWei, fromWei } = require("./helpers");
 
 const { deployFixture } = require("./deployFixture");
 // test cases for the contract
@@ -63,9 +63,8 @@ describe("DCA with single user ", function () {
   });
 
   it("fail when non manager execute orders", async function () {
-    const { sleepContract, addr1, dcaContract, usdtContract, addr2 } = await loadFixture(
-      deployFixture
-    );
+    const { sleepContract, addr1, dcaContract, usdtContract, addr2 } =
+      await loadFixture(deployFixture);
 
     await usdtContract.transfer(addr1.address, "1000");
     await usdtContract.connect(addr1).approve(dcaContract.address, "1000");

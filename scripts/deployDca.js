@@ -1,12 +1,12 @@
 const { ethers } = require("hardhat");
-
+const { MIN_AMOUNT_DCA, MIN_TRADE_AMOUNT} = require("../test/helpers");
 async function main() {
   const dcaFactory = await ethers.getContractFactory("SleepSwapDca");
 
   const usdtFaucet = "0xE118429D095de1a93951c67D04B523fE5cbAB62c";
   const routerAddress = "0xE592427A0AEce92De3Edee1F18E0157C05861564";
 
-  const dca = await dcaFactory.deploy(usdtFaucet, routerAddress);
+  const dca = await dcaFactory.deploy(usdtFaucet, routerAddress, MIN_AMOUNT_DCA, MIN_TRADE_AMOUNT);
   await dca.deployed();
   console.log("DCA:", dca.address);
 }

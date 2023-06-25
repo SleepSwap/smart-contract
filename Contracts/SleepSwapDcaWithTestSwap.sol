@@ -20,9 +20,9 @@ contract SleepSwapDcaWithTestSwap is Ownable {
   //manager: allowed to execute trades
   mapping(address => uint256) public managers;
   //allowed stragies for dca
-  mapping(uint256 => uint256) public frequenciesMapInDays;
+  mapping(uint256 => uint256) public frequencyMapHrs;
 
-  enum orderStatus {
+  enum OrderStatus {
     OPEN,
     COMPLETED,
     CANCELLED,
@@ -36,6 +36,8 @@ contract SleepSwapDcaWithTestSwap is Ownable {
   // Fees 0.005%
   uint256 public fee;
   uint256 public feePercent = 5;
+  uint256 public minimumOrderAmount;
+  uint256 public minimumTradeAmount;
 
   struct Order {
     uint256 orderId; // to identify order
@@ -49,7 +51,7 @@ contract SleepSwapDcaWithTestSwap is Ownable {
     uint256 tradeAmount; // amount of usdt per trade
     uint256 numOfTrades; // number of trades
     uint256 executedTrades; // number of trades executed
-    orderStatus status; // order status
+    OrderStatus status; // order status
   }
 
   uint256 public ordersCount = 0;
@@ -63,7 +65,7 @@ contract SleepSwapDcaWithTestSwap is Ownable {
   address public immutable swapRouter;
 
   uint24 public constant POOL_FEE = 3000;
-  uint128 public constant SECONDS_IN_A_DAY = 86400;
+  uint128 public constant SECOND_IN_HR = 3600;
 
   // events:
   event Invested(
@@ -109,18 +111,21 @@ contract SleepSwapDcaWithTestSwap is Ownable {
 
 
   // init contract
-  constructor(address _usdtAddress, address _swapRouter) {
+  constructor(address _usdtAddress, address _swapRouter, uint256 _minimumOrderAmount, uint256 _minimumTradeAmount) {
     usdtAddress = _usdtAddress;
     swapRouter = _swapRouter;
     managers[msg.sender] = 1;
-    frequenciesMapInDays[1] = 1;
-    frequenciesMapInDays[7] = 7;
-    frequenciesMapInDays[8] = 30;
+    minimumOrderAmount = _minimumOrderAmount;
+    minimumTradeAmount = _minimumTradeAmount; // 0.1 USDT
+    frequencyMapHrs[1] = 1;
+    frequencyMapHrs[4] = 4;
+    frequencyMapHrs[24] = 24;
+    frequencyMapHrs[168] = 168;
   }
 
   //modifiers
   modifier onlyManager() {
-    require(managers[msg.sender] == 1);
+    require(managers[msg.sender] == 1, "not allowed to perform operation");
     _;
   }
 
@@ -132,6 +137,9 @@ contract SleepSwapDcaWithTestSwap is Ownable {
     feePercent = _newFeePercent;
   }
 
+  function updateMinimumOrderAmount(uint256 _newMinimumOrderAmount) public onlyOwner {
+    minimumOrderAmount = _newMinimumOrderAmount;
+  }
 
   // function to be used for testing swaps
   function swapTokenFromUsdtTest(
@@ -152,10 +160,14 @@ contract SleepSwapDcaWithTestSwap is Ownable {
 
   function invest(uint256 _amount, uint256 amountPerTrade, uint256 frequency, address _tokenAddress) public {
     // Transfer the specified amount of USDT to this contract.
-    require(_amount > 0, "Amount must be greater than 0");
-    require(amountPerTrade > 0, "amountPerTrade must be greater than 0");
-    require(amountPerTrade < _amount, "amountPerTrade must be smaller than amount");
-    require(frequenciesMapInDays[frequency] > 0, "Frequency must be daily, weekly or monthly");
+    require(_amount > 0, "Amount must be > 0");
+    require(amountPerTrade > 0, "amountPerTrade needs to be +ive");
+    require(amountPerTrade <= _amount, "amountPerTrade should be <= amount");
+    require(frequencyMapHrs[frequency] > 0, "Frequency must be daily, weekly or monthly");
+    //add check for minimum order amount
+    require(_amount >= minimumOrderAmount, "Amount must be greater than minimum order amount");
+    // check for minimum trade amount
+    require(amountPerTrade >= minimumTradeAmount, "Amount per trade must be greater than minimum trade amount");
 
     TransferHelper.safeTransferFrom(usdtAddress, msg.sender, address(this), _amount);
 
@@ -178,8 +190,8 @@ contract SleepSwapDcaWithTestSwap is Ownable {
       tradeAmount: amountPerTrade, // AMOUNT PER TRADE
       numOfTrades: numOfTrades, // max number trades to mark this order as completed
       executedTrades: 0, // NUMBER OF TRADES EXECUTED
-      frequency: frequenciesMapInDays[frequency], // FREQUENCY OF TRADES
-      status: orderStatus.OPEN
+      frequency: frequencyMapHrs[frequency], // FREQUENCY OF TRADES
+      status: OrderStatus.OPEN
     });
 
     orders[ordersCount] = newOrder;
@@ -204,15 +216,15 @@ contract SleepSwapDcaWithTestSwap is Ownable {
     // if order id exists
     require(orders[_orderId].user != address(0), "Invalid order id!");
     require(orders[_orderId].user == msg.sender, "Can't withdraw others order!");
-    require(orders[_orderId].status == orderStatus.OPEN || orders[_orderId].status == orderStatus.COMPLETED, "Order is already withdrawn from and processed!");
+    require(orders[_orderId].status == OrderStatus.OPEN || orders[_orderId].status == OrderStatus.COMPLETED, "Order is already withdrawn from and processed!");
 
     Order storage _order = orders[_orderId];
     uint256 orderUsdt;
 
-    orderStatus originalStatus = _order.status;
-    _order.status = orderStatus.CANCELLED;
-    if (originalStatus == orderStatus.COMPLETED) {
-      _order.status = orderStatus.WITHDRAWN;
+    OrderStatus originalStatus = _order.status;
+    _order.status = OrderStatus.CANCELLED;
+    if (originalStatus == OrderStatus.COMPLETED) {
+      _order.status = OrderStatus.WITHDRAWN;
     }
 
     orderUsdt = _order.remainingAmount;
@@ -234,7 +246,7 @@ contract SleepSwapDcaWithTestSwap is Ownable {
 
       IERC20(_order.tokenAddress).transfer(msg.sender, orderToken);
     }
-    if(_order.status == orderStatus.CANCELLED) {
+    if(_order.status == OrderStatus.CANCELLED) {
       emit OrderCancelled(
         _order.orderId,
         _order.executedTrades,
@@ -264,11 +276,11 @@ contract SleepSwapDcaWithTestSwap is Ownable {
     for (uint256 i = 0; i < userOrders.length; i++) {
       Order storage selectedOrder = orders[userOrders[i]];
        // because cancelled state only comes after withdraw.
-      if(selectedOrder.status == orderStatus.CANCELLED || selectedOrder.status == orderStatus.WITHDRAWN )  continue;
+      if(selectedOrder.status == OrderStatus.CANCELLED || selectedOrder.status == OrderStatus.WITHDRAWN )  continue;
 
-      selectedOrder.status = orderStatus.WITHDRAWN;
+      selectedOrder.status = OrderStatus.WITHDRAWN;
       if (selectedOrder.executedTrades < selectedOrder.numOfTrades) {
-        selectedOrder.status = orderStatus.CANCELLED;
+        selectedOrder.status = OrderStatus.CANCELLED;
       }
 
       fiatBalanceToReturn += selectedOrder.remainingAmount;
@@ -276,7 +288,7 @@ contract SleepSwapDcaWithTestSwap is Ownable {
       // token and usdt deduction from each order
       selectedOrder.remainingAmount = 0;
       selectedOrder.tokenAccumulated = 0;
-      if (selectedOrder.status == orderStatus.CANCELLED) {
+      if (selectedOrder.status == OrderStatus.CANCELLED) {
         emit OrderCancelled(
           selectedOrder.orderId,
           selectedOrder.executedTrades,
@@ -310,9 +322,9 @@ contract SleepSwapDcaWithTestSwap is Ownable {
     require(orderId <= ordersCount, "Invalid order id!");
 
     Order storage selectedOrder = orders[orderId];
-    require(selectedOrder.status == orderStatus.OPEN, "Order removed!");
+    require(selectedOrder.status == OrderStatus.OPEN, "Order removed!");
     require(
-      selectedOrder.lastExecutionTime + selectedOrder.frequency.mul(SECONDS_IN_A_DAY) <= block.timestamp,
+      selectedOrder.lastExecutionTime + selectedOrder.frequency.mul(SECOND_IN_HR) <= block.timestamp,
       "Order can't be executed yet!"
     );
     require(
@@ -345,7 +357,7 @@ contract SleepSwapDcaWithTestSwap is Ownable {
 
     //stop the order if all numOfTrades executed
     if (selectedOrder.executedTrades == selectedOrder.numOfTrades) {
-      selectedOrder.status = orderStatus.COMPLETED;
+      selectedOrder.status = OrderStatus.COMPLETED;
     }
 
     emit OrderExecuted(
@@ -356,7 +368,7 @@ contract SleepSwapDcaWithTestSwap is Ownable {
       selectedOrder.remainingAmount
     );
 
-    if(selectedOrder.status == orderStatus.COMPLETED) {
+    if(selectedOrder.status == OrderStatus.COMPLETED) {
       emit OrderCompleted(orderId, selectedOrder.depositAmount, selectedOrder.tokenAccumulated, selectedOrder.tokenAddress);
     }
     }

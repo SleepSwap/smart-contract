@@ -1,5 +1,4 @@
 const { default: BigNumber } = require("bignumber.js");
-
 function fromWei(tokens, decimals = 18) {
   try {
     if (!tokens) {
@@ -31,7 +30,17 @@ function toWei(tokens, decimals = 18) {
 }
 
 const MIN_AMOUNT = toWei("50");
+const MIN_AMOUNT_DCA = toWei("40");
+const MIN_TRADE_AMOUNT = toWei("10");
 const MIN_GRIDS = 4;
 const MIN_PERCENT_CHANGE = 10;
 
-module.exports = { fromWei, toWei, MIN_AMOUNT, MIN_GRIDS, MIN_PERCENT_CHANGE };
+module.exports = {
+  fromWei,
+  toWei,
+  MIN_AMOUNT,
+  MIN_AMOUNT_DCA,
+  MIN_GRIDS,
+  MIN_PERCENT_CHANGE,
+  MIN_TRADE_AMOUNT,
+};

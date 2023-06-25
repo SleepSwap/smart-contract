@@ -1,7 +1,10 @@
-const { loadFixture, time } = require("@nomicfoundation/hardhat-network-helpers");
+const {
+  loadFixture,
+  time,
+} = require("@nomicfoundation/hardhat-network-helpers");
 const { expect } = require("chai");
 const BigNumber = require("bignumber.js");
-const { toWei, fromWei } = require("./helpers");
+const { toWei, fromWei, MIN_AMOUNT_DCA } = require("./helpers");
 
 const { deployFixture } = require("./deployFixture");
 // test cases for the contract
@@ -24,6 +27,7 @@ describe("DCA with single user ", function () {
     const isManager = await dcaContract.managers(owner.address);
     expect(isManager.toString()).to.equal("1");
   });
+
   it("New address must not be the owner", async function () {
     const { dcaContract, addr1 } = await loadFixture(deployFixture);
 
@@ -41,56 +45,63 @@ describe("DCA with single user ", function () {
   });
 
   it("new account can start strategy", async function () {
-    const { sleepContract, addr1, dcaContract, usdtContract } = await loadFixture(deployFixture);
+    const { sleepContract, addr1, dcaContract, usdtContract } =
+      await loadFixture(deployFixture);
 
-    await usdtContract.transfer(addr1.address, "1000");
-    await usdtContract.connect(addr1).approve(dcaContract.address, "1000");
+    await usdtContract.transfer(addr1.address, toWei("1000"));
+    await usdtContract.connect(addr1).approve(dcaContract.address, toWei("1000"));
 
-    await dcaContract.connect(addr1).invest("10", 5, 1, sleepContract.address);
+    const tokenInvested = toWei( "80");
+    const usdtForEachTrade = toWei( "5");
+  
+    await dcaContract.connect(addr1).invest(tokenInvested, usdtForEachTrade, 1, sleepContract.address);
     const userOrder = await dcaContract.orders(1);
 
     expect(userOrder?.orderId?.toString()).to.equal("1");
     expect(userOrder?.user?.toString()).to.equal(addr1.address);
     expect(userOrder?.tokenAddress?.toString()).to.equal(sleepContract.address);
-    expect(userOrder?.depositAmount?.toString()).to.equal("10");
-    expect(userOrder?.remainingAmount?.toString()).to.equal("10");
-    expect(userOrder?.tradeAmount?.toString()).to.equal("5");
+    expect(userOrder?.depositAmount?.toString()).to.equal(tokenInvested);
+    expect(userOrder?.remainingAmount?.toString()).to.equal(tokenInvested);
+    expect(userOrder?.tradeAmount?.toString()).to.equal(usdtForEachTrade);
     expect(userOrder?.tokenAccumulated?.toString()).to.equal("0");
-    expect(userOrder?.numOfTrades?.toString()).to.equal("2");
+    expect(userOrder?.numOfTrades?.toString()).to.equal("16");
     expect(userOrder?.frequency?.toString()).to.equal("1");
     expect(userOrder?.executedTrades?.toString()).to.equal("0");
     expect(userOrder?.status?.toString()).to.equal("0");
   });
 
   it("fail when non manager execute orders", async function () {
-    const { sleepContract, addr1, dcaContract, usdtContract, addr2 } =
+    const { SEC_IN_HR, sleepContract, addr1, dcaContract, usdtContract, addr2 } =
       await loadFixture(deployFixture);
 
-    await usdtContract.transfer(addr1.address, "1000");
-    await usdtContract.connect(addr1).approve(dcaContract.address, "1000");
-    // seconds in 1 day = 86400
-    await dcaContract.connect(addr1).invest("10", 5, 1, sleepContract.address);
+    await usdtContract.transfer(addr1.address, toWei("1000"));
+    await usdtContract.connect(addr1).approve(dcaContract.address, toWei("1000"));
+    // seconds in 1 day = SEC_IN_HR
+    const tokenInvested = toWei("80");
+    const usdtForEachTrade = toWei("5");
+    await dcaContract.connect(addr1).invest(tokenInvested, usdtForEachTrade, 1, sleepContract.address);
 
-    await time.increase(86400);
-    await expect(dcaContract.connect(addr2).executeOrders([1])).to.be.reverted;
+    await time.increase(SEC_IN_HR);
+    await expect(dcaContract.connect(addr2).executeOrders([1])).to.be.revertedWith("not allowed to perform operation");
   });
+
   it("all managers can execute orders", async function () {
-    const { sleepContract, addr1, dcaContract, usdtContract, addr2, owner } = await loadFixture(
-      deployFixture
-    );
+    const { sleepContract, addr1, dcaContract, usdtContract, addr2, SEC_IN_HR, owner } =
+      await loadFixture(deployFixture);
 
-    await usdtContract.transfer(addr1.address, "1000");
-    await usdtContract.connect(addr1).approve(dcaContract.address, "1000");
-
-    await dcaContract.connect(addr1).invest("80", 20, 1, sleepContract.address);
-    time.increase(86500);
+    await usdtContract.transfer(addr1.address, toWei("1000"));
+    await usdtContract.connect(addr1).approve(dcaContract.address, toWei("1000"));
+    const tokenInvested = toWei( "80");
+    const usdtForEachTrade = toWei( "20");
+    await dcaContract.connect(addr1).invest(tokenInvested, usdtForEachTrade, 1, sleepContract.address);
+    time.increase(SEC_IN_HR);
     await dcaContract.connect(owner).executeOrders([1]);
 
     const userOrder = await dcaContract.orders(1);
 
     await dcaContract.addManager(addr1.address);
     console.log("addr1:\n");
-    time.increase(86500);
+    time.increase(SEC_IN_HR);
 
     await dcaContract.connect(addr1).executeOrders([1]);
 
@@ -98,7 +109,7 @@ describe("DCA with single user ", function () {
 
     await dcaContract.addManager(addr2.address);
     console.log("addr1:\n");
-    time.increase(86500);
+    time.increase(SEC_IN_HR);
 
     await dcaContract.connect(addr2).executeOrders([1]);
 
@@ -106,7 +117,7 @@ describe("DCA with single user ", function () {
 
     // own can also execute orders after adding new managers
     console.log("addr1:\n");
-    time.increase(86500);
+    time.increase(SEC_IN_HR);
 
     await dcaContract.connect(owner).executeOrders([1]);
 
@@ -120,15 +131,18 @@ describe("DCA with single user ", function () {
   });
 
   it("order mark completed when trades are done", async function () {
-    const { sleepContract, addr1, dcaContract, usdtContract, owner } = await loadFixture(
-      deployFixture
-    );
+    const { sleepContract, addr1, dcaContract, usdtContract, owner, SEC_IN_HR } =
+      await loadFixture(deployFixture);
 
     await usdtContract.transfer(addr1.address, toWei("1000000"));
-    await usdtContract.connect(addr1).approve(dcaContract.address, toWei("1000000"));
-    const tokenInvested = "80";
-    const usdtForEachTrade = "40";
-    const totalExpectedTrades = new BigNumber(tokenInvested).dividedBy(usdtForEachTrade).toString();
+    await usdtContract
+      .connect(addr1)
+      .approve(dcaContract.address, toWei("1000000"));
+    const tokenInvested = toWei("80");
+    const usdtForEachTrade = toWei("40");
+    const totalExpectedTrades = new BigNumber(tokenInvested)
+      .dividedBy(usdtForEachTrade)
+      .toString();
     const blocktimeBeforeInvest = await time.latest();
     await dcaContract
       .connect(addr1)
@@ -144,10 +158,14 @@ describe("DCA with single user ", function () {
     expect(freshOrder?.tradeAmount?.toString()).to.equal(usdtForEachTrade);
     expect(freshOrder?.depositAmount?.toString()).to.equal(tokenInvested);
     expect(freshOrder?.user?.toString()).to.equal(addr1.address);
-    expect(freshOrder?.tokenAddress?.toString()).to.equal(sleepContract.address);
+    expect(freshOrder?.tokenAddress?.toString()).to.equal(
+      sleepContract.address
+    );
     expect(freshOrder?.frequency?.toString()).to.equal("1");
     expect(freshOrder?.orderId?.toString()).to.equal("1");
-    expect(freshOrder?.lastExecutionTime).to.greaterThanOrEqual(blocktimeBeforeInvest);
+    expect(freshOrder?.lastExecutionTime).to.greaterThanOrEqual(
+      blocktimeBeforeInvest
+    );
     // <xxxxxxxxxxxxxxxxxx DONE ORDER CREATED NO TRADES EXECUTED xxxxxxxxxxxxxxxxxx>
 
     const [prevPoolUsdtBalance, prevPoolTokenBalance] = await Promise.all([
@@ -159,10 +177,10 @@ describe("DCA with single user ", function () {
       prevPoolTokenBalance,
     });
     // <---------------- 1st trade ---------------->
-    let blockTimeForNextExecution = (await time.latest()) + 86400;
-    await time.increase(86500);
-    await dcaContract.connect(owner).executeOrders([1]);
+    let blockTimeForNextExecution = (await time.latest()) + SEC_IN_HR;
+    await time.increase(SEC_IN_HR);
 
+    await dcaContract.connect(owner).executeOrders([1]);
     const [poolUsdtBalance, poolTokenBalance] = await Promise.all([
       dcaContract.poolBalance(),
       dcaContract.poolTokenBalances(sleepContract.address),
@@ -170,20 +188,36 @@ describe("DCA with single user ", function () {
     let expectedExecutedTrades = "1";
     let expectedStatus = "0";
 
-    const tokensRecievedOnEachTrade = new BigNumber(usdtForEachTrade).toString();
+    const feeDeductionForEachOrder = new BigNumber(usdtForEachTrade)
+      .multipliedBy(5)
+      .div(10000)
+      .toString();
+    const tokensRecievedOnEachTrade = new BigNumber(usdtForEachTrade)
+      .minus(feeDeductionForEachOrder)
+      .toString();
     const userOrderOneTradeDone = await dcaContract.orders(1);
-
+    console.log({
+      userOrderOneTradeDone,
+    });
     expect(userOrderOneTradeDone?.status?.toString()).to.equal(expectedStatus);
-    expect(userOrderOneTradeDone?.executedTrades?.toString()).to.equal(expectedExecutedTrades);
+    expect(userOrderOneTradeDone?.executedTrades?.toString()).to.equal(
+      expectedExecutedTrades
+    );
     expect(userOrderOneTradeDone?.remainingAmount?.toString()).to.equal(
       new BigNumber(tokenInvested)
-        .minus(new BigNumber(usdtForEachTrade).multipliedBy(expectedExecutedTrades))
+        .minus(
+          new BigNumber(usdtForEachTrade).multipliedBy(expectedExecutedTrades)
+        )
         .toString()
     );
     expect(userOrderOneTradeDone?.tokenAccumulated?.toString()).to.equal(
-      new BigNumber(tokensRecievedOnEachTrade).multipliedBy(expectedExecutedTrades).toString()
+      new BigNumber(tokensRecievedOnEachTrade)
+        .multipliedBy(expectedExecutedTrades)
+        .toString()
     );
-    expect(userOrderOneTradeDone?.tradeAmount?.toString()).to.equal(usdtForEachTrade);
+    expect(userOrderOneTradeDone?.tradeAmount?.toString()).to.equal(
+      usdtForEachTrade
+    );
     expect(userOrderOneTradeDone?.orderId?.toString()).to.equal("1");
     expect(userOrderOneTradeDone?.lastExecutionTime).to.greaterThanOrEqual(
       blockTimeForNextExecution
@@ -201,8 +235,8 @@ describe("DCA with single user ", function () {
     // <xxxxxxxxxxxxxxxxxx DONE 1st trade xxxxxxxxxxxxxxxxxx>
 
     //  <---------------- 2nd trade ---------------->
-    blockTimeForNextExecution = (await time.latest()) + 86400;
-    time.increase(86500);
+    blockTimeForNextExecution = (await time.latest()) + SEC_IN_HR;
+    time.increase(SEC_IN_HR);
 
     await dcaContract.connect(owner).executeOrders([1]);
 
@@ -210,72 +244,92 @@ describe("DCA with single user ", function () {
     expectedStatus = "1";
 
     const userOrderAllTradesDone = await dcaContract.orders(1);
+    console.log({userOrderAllTradesDone});
     const [finalPoolUsdtBalance, finalPoolTokenBalance] = await Promise.all([
       dcaContract.poolBalance(),
       dcaContract.poolTokenBalances(sleepContract.address),
     ]);
 
     expect(userOrderAllTradesDone?.status?.toString()).to.equal(expectedStatus);
-    expect(userOrderAllTradesDone?.executedTrades?.toString()).to.equal(expectedExecutedTrades);
+    expect(userOrderAllTradesDone?.executedTrades?.toString()).to.equal(
+      expectedExecutedTrades
+    );
     expect(userOrderAllTradesDone?.remainingAmount?.toString()).to.equal(
       new BigNumber(tokenInvested)
-        .minus(new BigNumber(usdtForEachTrade).multipliedBy(expectedExecutedTrades))
+        .minus(
+          new BigNumber(usdtForEachTrade).multipliedBy(expectedExecutedTrades)
+        )
         .toString()
     );
     expect(userOrderAllTradesDone?.tokenAccumulated?.toString()).to.equal(
-      new BigNumber(tokensRecievedOnEachTrade).multipliedBy(expectedExecutedTrades).toString()
+      new BigNumber(tokensRecievedOnEachTrade)
+        .multipliedBy(expectedExecutedTrades)
+        .toString()
     );
-    expect(userOrderAllTradesDone?.tradeAmount?.toString()).to.equal(usdtForEachTrade);
+    expect(userOrderAllTradesDone?.tradeAmount?.toString()).to.equal(
+      usdtForEachTrade
+    );
     expect(userOrderAllTradesDone?.orderId?.toString()).to.equal("1");
     expect(userOrderAllTradesDone?.lastExecutionTime).to.greaterThanOrEqual(
       blockTimeForNextExecution
     );
     expect(finalPoolUsdtBalance.toString()).to.equal(
-      new BigNumber(poolUsdtBalance.toString()).minus(usdtForEachTrade).toString()
+      new BigNumber(poolUsdtBalance.toString())
+        .minus(usdtForEachTrade)
+        .toString()
     );
     expect(finalPoolTokenBalance.toString()).to.equal(
-      new BigNumber(poolTokenBalance.toString()).plus(tokensRecievedOnEachTrade).toString()
+      new BigNumber(poolTokenBalance.toString())
+        .plus(tokensRecievedOnEachTrade)
+        .toString()
     );
     // <xxxxxxxxxxxxxxxxxx DONE 2nd FINAL TRADE xxxxxxxxxxxxxxxxxx>
   });
 
   it("withdrawByOrderId revert withdraw when try withdraw other orders , or owner try to withdraw", async function () {
-    const { sleepContract, owner, addr1, addr2, dcaContract, usdtContract } = await loadFixture(
-      deployFixture
-    );
+    const { sleepContract, owner, addr1, addr2, dcaContract, usdtContract } =
+      await loadFixture(deployFixture);
 
     await usdtContract.transfer(addr1.address, toWei("1000000"));
-    await usdtContract.connect(addr1).approve(dcaContract.address, toWei("1000000"));
+    await usdtContract
+      .connect(addr1)
+      .approve(dcaContract.address, toWei("1000000"));
 
-    const tokenInvested = "80";
-    const usdtForEachTrade = "40";
+    const tokenInvested = toWei( "80");
+    const usdtForEachTrade = toWei( "40");
     await dcaContract
       .connect(addr1)
       .invest(tokenInvested, usdtForEachTrade, 1, sleepContract.address);
 
-    await expect(dcaContract.connect(addr2).withdrawByOrderId(1)).to.be.revertedWith(
-      "Can't withdraw others order!"
-    );
-    await expect(dcaContract.connect(owner).withdrawByOrderId(1)).to.be.revertedWith(
-      "Can't withdraw others order!"
-    );
+    await expect(
+      dcaContract.connect(addr2).withdrawByOrderId(1)
+    ).to.be.revertedWith("Can't withdraw others order!");
+    await expect(
+      dcaContract.connect(owner).withdrawByOrderId(1)
+    ).to.be.revertedWith("Can't withdraw others order!");
   });
 
   it("withdrawByOrderId when no order executed: should  withdraw tokens", async function () {
-    const { sleepContract, addr1, dcaContract, usdtContract } = await loadFixture(deployFixture);
+    const { sleepContract, addr1, dcaContract, usdtContract } =
+      await loadFixture(deployFixture);
 
     await usdtContract.transfer(addr1.address, toWei("1000000"));
-    await usdtContract.connect(addr1).approve(dcaContract.address, toWei("1000000"));
+    await usdtContract
+      .connect(addr1)
+      .approve(dcaContract.address, toWei("1000000"));
 
-    const tokenInvested = "80";
-    const usdtForEachTrade = "40";
-    const totalExpectedTrades = new BigNumber(tokenInvested).dividedBy(usdtForEachTrade).toString();
+    const tokenInvested = toWei( "80");
+    const usdtForEachTrade = toWei( "40");
+    const totalExpectedTrades = new BigNumber(tokenInvested)
+      .dividedBy(usdtForEachTrade)
+      .toString();
     // prev pool balances
-    const [prevPoolUsdtBalance, prevPoolTokenBalance, prevFee] = await Promise.all([
-      dcaContract.poolBalance(),
-      dcaContract.poolTokenBalances(sleepContract.address),
-      dcaContract.fee(),
-    ]);
+    const [prevPoolUsdtBalance, prevPoolTokenBalance, prevFee] =
+      await Promise.all([
+        dcaContract.poolBalance(),
+        dcaContract.poolTokenBalances(sleepContract.address),
+        dcaContract.fee(),
+      ]);
 
     const userUsdtBalancePrev = await usdtContract.balanceOf(addr1.address);
     const userTokenBalancePrev = await sleepContract.balanceOf(addr1.address);
@@ -330,7 +384,9 @@ describe("DCA with single user ", function () {
 
     // check pool and token details after withdraw
     expect(poolTokenBalance.toString()).to.equal(
-      new BigNumber(prevPoolTokenBalance.toString()).plus(totalTokensRecieved).toString()
+      new BigNumber(prevPoolTokenBalance.toString())
+        .plus(totalTokensRecieved)
+        .toString()
     );
 
     // console.log("pool data  ", {
@@ -341,7 +397,9 @@ describe("DCA with single user ", function () {
     //   totalUsdtDeductions,
     // });
     expect(poolUsdtBalance?.toString()).to.equal(
-      new BigNumber(prevPoolUsdtBalance.toString()).minus(totalUsdtDeductions).toString()
+      new BigNumber(prevPoolUsdtBalance.toString())
+        .minus(totalUsdtDeductions)
+        .toString()
     );
 
     expect(updatedFee.toString()).to.equal(
@@ -354,28 +412,34 @@ describe("DCA with single user ", function () {
     expect(userOrder?.tradeAmount?.toString()).to.equal(
       new BigNumber(tokenInvested).div(totalExpectedTrades).toString()
     );
-    expect(userOrder?.tokenAccumulated?.toString()).to.equal(totalTokensRecieved);
+    expect(userOrder?.tokenAccumulated?.toString()).to.equal(
+      totalTokensRecieved
+    );
     expect(userOrder?.executedTrades?.toString()).to.equal(executedTrades);
     expect(userOrder?.status?.toString()).to.equal("2"); // cancelled
   });
 
   it("withdrawByOrderId when all trades executed: should ¯ withdraw tokens", async function () {
-    const { sleepContract, addr1, dcaContract, usdtContract, owner } = await loadFixture(
-      deployFixture
-    );
+    const { sleepContract, addr1, dcaContract, usdtContract, owner, SEC_IN_HR } =
+      await loadFixture(deployFixture);
 
     await usdtContract.transfer(addr1.address, toWei("1000000"));
-    await usdtContract.connect(addr1).approve(dcaContract.address, toWei("1000000"));
+    await usdtContract
+      .connect(addr1)
+      .approve(dcaContract.address, toWei("1000000"));
 
-    const tokenInvested = "80";
-    const usdtForEachTrade = "40";
-    const totalExpectedTrades = new BigNumber(tokenInvested).dividedBy(usdtForEachTrade).toString();
+    const tokenInvested = toWei( "80");
+    const usdtForEachTrade = toWei( "40");
+    const totalExpectedTrades = new BigNumber(tokenInvested)
+      .dividedBy(usdtForEachTrade)
+      .toString();
     // prev pool balances
-    const [prevPoolUsdtBalance, prevPoolTokenBalance, prevFee] = await Promise.all([
-      dcaContract.poolBalance(),
-      dcaContract.poolTokenBalances(sleepContract.address),
-      dcaContract.fee(),
-    ]);
+    const [prevPoolUsdtBalance, prevPoolTokenBalance, prevFee] =
+      await Promise.all([
+        dcaContract.poolBalance(),
+        dcaContract.poolTokenBalances(sleepContract.address),
+        dcaContract.fee(),
+      ]);
 
     const userUsdtBalancePrev = await usdtContract.balanceOf(addr1.address);
 
@@ -384,9 +448,9 @@ describe("DCA with single user ", function () {
       .invest(tokenInvested, usdtForEachTrade, 1, sleepContract.address);
 
     // execute 1st grid
-    await time.increase(86500);
+    await time.increase(SEC_IN_HR);
     await dcaContract.connect(owner).executeOrders([1]);
-    await time.increase(86500);
+    await time.increase(SEC_IN_HR);
     console.log(await dcaContract.connect(owner).executeOrders([1]));
     const userOrderBeforeWithdraw = await dcaContract.orders(1);
     expect(userOrderBeforeWithdraw?.status?.toString()).to.equal("1"); // completed
@@ -407,15 +471,19 @@ describe("DCA with single user ", function () {
     const userTokenBalance = await sleepContract.balanceOf(addr1.address);
     const userOrder = await dcaContract.orders(1);
 
-    const usdtForEachOrder = new BigNumber(tokenInvested).div(totalExpectedTrades).toString();
+    const usdtForEachOrder = new BigNumber(tokenInvested)
+      .div(totalExpectedTrades)
+      .toString();
+
     const totalUsdtDeductions = new BigNumber(usdtForEachOrder)
       .multipliedBy(executedTrades)
       .toString();
 
-    const feeDeductionForEachTrade = new BigNumber(usdtForEachOrder)
-      .multipliedBy(0) // TODO: add fee logic in contracts
+    const feeDeductionForEachTrade = new BigNumber(usdtForEachTrade)
+      .multipliedBy(5)
       .div(10000)
       .toString();
+
     const totalFeeDeductions = new BigNumber(feeDeductionForEachTrade)
       .multipliedBy(executedTrades)
       .toString();
@@ -429,7 +497,11 @@ describe("DCA with single user ", function () {
       .toString();
     // check token balance after withdraw
     expect(fromWei(userUsdtBalance?.toString())).to.equal(
-      fromWei(new BigNumber(userUsdtBalancePrev?.toString()).minus(totalUsdtDeductions).toString())
+      fromWei(
+        new BigNumber(userUsdtBalancePrev?.toString())
+          .minus(totalUsdtDeductions)
+          .toString()
+      )
     );
     expect(userTokenBalance?.toString()).to.equal(totalTokensRecieved);
     // check pool and token details after withdraw

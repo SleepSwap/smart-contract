@@ -8,8 +8,8 @@ import "@uniswap/v3-periphery/contracts/libraries/TransferHelper.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "./TestSwap.sol";
-import "@openzeppelin/contracts/utils/math/SafeMath.sol";// BASE TOKEN; USDT - usdtToken
+import "@openzeppelin/contracts/utils/math/SafeMath.sol";
+// BASE TOKEN; USDT - usdtToken
 // TRADE TOKENL: ERC20 - tokenAmount
 
 contract SleepSwapDca is Ownable {
@@ -20,9 +20,9 @@ contract SleepSwapDca is Ownable {
   //manager: allowed to execute trades
   mapping(address => uint256) public managers;
   //allowed stragies for dca
-  mapping(uint256 => uint256) public frequenciesMapInDays;
+  mapping(uint256 => uint256) public frequencyMapHrs;
 
-  enum orderStatus {
+  enum OrderStatus {
     OPEN,
     COMPLETED,
     CANCELLED,
@@ -36,6 +36,8 @@ contract SleepSwapDca is Ownable {
   // Fees 0.005%
   uint256 public fee;
   uint256 public feePercent = 5;
+  uint256 public minimumOrderAmount;
+  uint256 public minimumTradeAmount;
 
   struct Order {
     uint256 orderId; // to identify order
@@ -49,13 +51,13 @@ contract SleepSwapDca is Ownable {
     uint256 tradeAmount; // amount of usdt per trade
     uint256 numOfTrades; // number of trades
     uint256 executedTrades; // number of trades executed
-    orderStatus status; // order status
+    OrderStatus status; // order status
   }
 
   uint256 public ordersCount = 0;
   // mappings
   mapping(uint256 => Order) public orders;
-  mapping(address => mapping(address => uint256[])) public userOrders;
+  mapping(address => mapping(address => uint256[])) public userOrdersMap;
   // 0x7D.  --> PBR --> [1,2,3]
   // 0x8c.  --> PBR --> [5,6]
 
@@ -63,7 +65,7 @@ contract SleepSwapDca is Ownable {
   address public immutable swapRouter;
 
   uint24 public constant POOL_FEE = 3000;
-  uint128 public constant SECONDS_IN_A_DAY = 86400;
+  uint128 public constant SECOND_IN_HR = 3600;
 
   // events:
   event Invested(
@@ -107,19 +109,23 @@ contract SleepSwapDca is Ownable {
   );
   event ExecutionError(uint256 orderId, string error);
 
+
   // init contract
-  constructor(address _usdtAddress, address _swapRouter) {
+  constructor(address _usdtAddress, address _swapRouter, uint256 _minimumOrderAmount, uint256 _minimumTradeAmount) {
     usdtAddress = _usdtAddress;
     swapRouter = _swapRouter;
     managers[msg.sender] = 1;
-    frequenciesMapInDays[1] = 1;
-    frequenciesMapInDays[7] = 7;
-    frequenciesMapInDays[8] = 30;
+    minimumOrderAmount = _minimumOrderAmount; // 40USDT
+    minimumTradeAmount = _minimumTradeAmount; // 10USDT
+    frequencyMapHrs[1] = 1; // 1 hr
+    frequencyMapHrs[4] = 4; // 4 hrs
+    frequencyMapHrs[24] = 24; // 1 day
+    frequencyMapHrs[168] = 168; // 1 week
   }
 
   //modifiers
   modifier onlyManager() {
-    require(managers[msg.sender] == 1);
+    require(managers[msg.sender] == 1, "not allowed to perform operation");
     _;
   }
 
@@ -131,60 +137,53 @@ contract SleepSwapDca is Ownable {
     feePercent = _newFeePercent;
   }
 
+  function updateMinimumOrderAmount(uint256 _newMinimumOrderAmount) public onlyOwner {
+    minimumOrderAmount = _newMinimumOrderAmount;
+  }
+
   function swapTokenFromUsdt(
-    uint256 _amountIn,
-    address _tokenAddress
-  ) internal returns (uint256 amountOut) {
-    // Fee deduction
-    uint256 order_fee = _amountIn.mul(feePercent).div(10000);
-    fee += order_fee;
-    uint256 usdt_for_trade = _amountIn - order_fee;
-    address from_token = usdtAddress;
-    address to_token = _tokenAddress;
+      uint256 _amountIn,
+      address _tokenAddress
+    ) internal returns (uint256 amountOut) {
+        // Fee deduction
+      uint256 orderFee = _amountIn.mul(feePercent).div(10000);
+      fee += orderFee;
+      uint256 usdt_for_trade = _amountIn - orderFee;
 
-    // Approve the router to spend USDT.
-    TransferHelper.safeApprove(from_token, swapRouter, usdt_for_trade);
+      address fromToken = usdtAddress;
+      address toToken = _tokenAddress;
 
-    // Naively set amountOutMinimum to 0. In production, use an oracle or other data source to choose a safer value for amountOutMinimum.
-    // We also set the sqrtPriceLimitx96 to be 0 to ensure we swap our exact input amount.
-    ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
-      tokenIn: from_token,
-      tokenOut: to_token,
-      fee: POOL_FEE,
-      recipient: address(this),
-      deadline: block.timestamp,
-      amountIn: usdt_for_trade,
-      amountOutMinimum: 0,
-      sqrtPriceLimitX96: 0
-    });
+      // Approve the router to spend USDT.
+      TransferHelper.safeApprove(fromToken, swapRouter, usdt_for_trade);
 
-    // The call to exactInputSingle executes the swap.
-    amountOut = ISwapRouter(swapRouter).exactInputSingle(params);
-  }
+      // Naively set amountOutMinimum to 0. In production, use an oracle or other data source to choose a safer value for amountOutMinimum.
+      // We also set the sqrtPriceLimitx96 to be 0 to ensure we swap our exact input amount.
+      ISwapRouter.ExactInputSingleParams memory params = ISwapRouter
+          .ExactInputSingleParams({
+              tokenIn: fromToken,
+              tokenOut: toToken,
+              fee: POOL_FEE,
+              recipient: address(this),
+              deadline: block.timestamp,
+              amountIn: usdt_for_trade,
+              amountOutMinimum: 0,
+              sqrtPriceLimitX96: 0
+          });
 
-  // function to be used for testing swaps
-  function swapTokenFromUsdtTest(
-    uint256 _amountIn
-  ) internal returns (uint256 amountOut) {
-    // Fee deduction
-    uint256 order_fee = _amountIn.mul(feePercent).div(10000);
-    fee += order_fee;
-    uint256 usdt_for_trade = _amountIn - order_fee;
-
-    address from_token = usdtAddress;
-    // Approve the router to spend USDT.
-    TransferHelper.safeApprove(from_token, swapRouter, usdt_for_trade);
-
-    // test version of swap
-    amountOut = TestSwap(swapRouter).swapFromUsdt(usdt_for_trade);
-  }
+      // The call to exactInputSingle executes the swap.
+      amountOut = ISwapRouter(swapRouter).exactInputSingle(params);
+    }
 
   function invest(uint256 _amount, uint256 amountPerTrade, uint256 frequency, address _tokenAddress) public {
     // Transfer the specified amount of USDT to this contract.
-    require(_amount > 0, "Amount must be greater than 0");
-    require(amountPerTrade > 0, "amountPerTrade must be greater than 0");
-    require(amountPerTrade < _amount, "amountPerTrade must be smaller than amount");
-    require(frequenciesMapInDays[frequency] > 0, "Frequency must be daily, weekly or monthly");
+    require(_amount > 0, "Amount must be > 0");
+    require(amountPerTrade > 0, "amountPerTrade needs to be +ive");
+    require(amountPerTrade <= _amount, "amountPerTrade should be <= amount");
+    require(frequencyMapHrs[frequency] > 0, "Frequency must be daily, weekly or monthly");
+    //add check for minimum order amount
+    require(_amount >= minimumOrderAmount, "Amount must be greater than minimum order amount");
+    // check for minimum trade amount
+    require(amountPerTrade >= minimumTradeAmount, "Amount per trade must be greater than minimum trade amount");
 
     TransferHelper.safeTransferFrom(usdtAddress, msg.sender, address(this), _amount);
 
@@ -207,12 +206,12 @@ contract SleepSwapDca is Ownable {
       tradeAmount: amountPerTrade, // AMOUNT PER TRADE
       numOfTrades: numOfTrades, // max number trades to mark this order as completed
       executedTrades: 0, // NUMBER OF TRADES EXECUTED
-      frequency: frequenciesMapInDays[frequency], // FREQUENCY OF TRADES
-      status: orderStatus.OPEN
+      frequency: frequencyMapHrs[frequency], // FREQUENCY OF TRADES
+      status: OrderStatus.OPEN
     });
 
     orders[ordersCount] = newOrder;
-    userOrders[msg.sender][_tokenAddress].push(ordersCount);
+    userOrdersMap[msg.sender][_tokenAddress].push(ordersCount);
 
     // Updating  pool usdt balance when user deposit usdt
     poolBalance += _amount;
@@ -233,15 +232,15 @@ contract SleepSwapDca is Ownable {
     // if order id exists
     require(orders[_orderId].user != address(0), "Invalid order id!");
     require(orders[_orderId].user == msg.sender, "Can't withdraw others order!");
-    require(orders[_orderId].status == orderStatus.OPEN || orders[_orderId].status == orderStatus.COMPLETED, "Order is already withdrawn from and processed!");
+    require(orders[_orderId].status == OrderStatus.OPEN || orders[_orderId].status == OrderStatus.COMPLETED, "Order is already withdrawn from and processed!");
 
     Order storage _order = orders[_orderId];
     uint256 orderUsdt;
 
-    orderStatus originalStatus = _order.status;
-    _order.status = orderStatus.CANCELLED;
-    if (originalStatus == orderStatus.COMPLETED) {
-      _order.status = orderStatus.WITHDRAWN;
+    OrderStatus originalStatus = _order.status;
+    _order.status = OrderStatus.CANCELLED;
+    if (originalStatus == OrderStatus.COMPLETED) {
+      _order.status = OrderStatus.WITHDRAWN;
     }
 
     orderUsdt = _order.remainingAmount;
@@ -263,7 +262,7 @@ contract SleepSwapDca is Ownable {
 
       IERC20(_order.tokenAddress).transfer(msg.sender, orderToken);
     }
-    if(_order.status == orderStatus.CANCELLED) {
+    if(_order.status == OrderStatus.CANCELLED) {
       emit OrderCancelled(
         _order.orderId,
         _order.executedTrades,
@@ -283,54 +282,54 @@ contract SleepSwapDca is Ownable {
   }
 
   function withdraw(address _tokenAddress) public {
-    uint256[] storage user_orders = userOrders[msg.sender][_tokenAddress];
+    uint256[] storage userOrders = userOrdersMap[msg.sender][_tokenAddress];
 
-    require(user_orders.length > 0, "No orders!");
+    require(userOrders.length > 0, "No orders!");
 
-    uint256 fiat_balance_to_return = 0;
-    uint256 token_amount_to_return = 0;
+    uint256 fiatBalanceToReturn = 0;
+    uint256 tokenAmountToReturn = 0;
     //close existing open orders
-    for (uint256 i = 0; i < user_orders.length; i++) {
-      Order storage selected_order = orders[user_orders[i]];
+    for (uint256 i = 0; i < userOrders.length; i++) {
+      Order storage selectedOrder = orders[userOrders[i]];
        // because cancelled state only comes after withdraw.
-      if(selected_order.status == orderStatus.CANCELLED || selected_order.status == orderStatus.WITHDRAWN )  continue;
+      if(selectedOrder.status == OrderStatus.CANCELLED || selectedOrder.status == OrderStatus.WITHDRAWN )  continue;
 
-      selected_order.status = orderStatus.WITHDRAWN;
-      if (selected_order.executedTrades < selected_order.numOfTrades) {
-        selected_order.status = orderStatus.CANCELLED;
+      selectedOrder.status = OrderStatus.WITHDRAWN;
+      if (selectedOrder.executedTrades < selectedOrder.numOfTrades) {
+        selectedOrder.status = OrderStatus.CANCELLED;
       }
 
-      fiat_balance_to_return += selected_order.remainingAmount;
-      token_amount_to_return += selected_order.tokenAccumulated;
+      fiatBalanceToReturn += selectedOrder.remainingAmount;
+      tokenAmountToReturn += selectedOrder.tokenAccumulated;
       // token and usdt deduction from each order
-      selected_order.remainingAmount = 0;
-      selected_order.tokenAccumulated = 0;
-      if (selected_order.status == orderStatus.CANCELLED) {
+      selectedOrder.remainingAmount = 0;
+      selectedOrder.tokenAccumulated = 0;
+      if (selectedOrder.status == OrderStatus.CANCELLED) {
         emit OrderCancelled(
-          selected_order.orderId,
-          selected_order.executedTrades,
-          selected_order.remainingAmount
+          selectedOrder.orderId,
+          selectedOrder.executedTrades,
+          selectedOrder.remainingAmount
         );
       }
     }
 
     // deducting  pool usdt balances
-    poolBalance -= fiat_balance_to_return;
-    IERC20(usdtAddress).transfer(msg.sender, fiat_balance_to_return);
+    poolBalance -= fiatBalanceToReturn;
+    IERC20(usdtAddress).transfer(msg.sender, fiatBalanceToReturn);
 
     // return tokens if some numOfTrades have already executed
-    if (token_amount_to_return > 0) {
-      poolTokenBalances[_tokenAddress] -= token_amount_to_return;
+    if (tokenAmountToReturn > 0) {
+      poolTokenBalances[_tokenAddress] -= tokenAmountToReturn;
 
-      IERC20(_tokenAddress).transfer(msg.sender, token_amount_to_return);
+      IERC20(_tokenAddress).transfer(msg.sender, tokenAmountToReturn);
     }
 
     emit Withdraw(
       msg.sender,
-      user_orders,
+      userOrders,
       _tokenAddress,
-      fiat_balance_to_return,
-      token_amount_to_return
+      fiatBalanceToReturn,
+      tokenAmountToReturn
     );
   }
 
@@ -338,55 +337,56 @@ contract SleepSwapDca is Ownable {
     require(orderId > 0, "Order id must be greater than 0!");
     require(orderId <= ordersCount, "Invalid order id!");
 
-    Order storage selected_order = orders[orderId];
-    require(selected_order.status == orderStatus.OPEN, "Order removed!");
+    Order storage selectedOrder = orders[orderId];
+    require(selectedOrder.status == OrderStatus.OPEN, "Order removed!");
     require(
-      selected_order.lastExecutionTime + selected_order.frequency.mul(SECONDS_IN_A_DAY) <= block.timestamp,
+      selectedOrder.lastExecutionTime + selectedOrder.frequency.mul(SECOND_IN_HR) <= block.timestamp,
       "Order can't be executed yet!"
     );
     require(
-      selected_order.executedTrades < selected_order.numOfTrades,
+      selectedOrder.executedTrades < selectedOrder.numOfTrades,
       "All trades executed! Order completed!"
     );
     uint256 amountToSell;
-    if ( selected_order.remainingAmount < selected_order.tradeAmount) {
-      amountToSell = selected_order.remainingAmount;
-      selected_order.remainingAmount = 0;
+    if ( selectedOrder.remainingAmount < selectedOrder.tradeAmount) {
+      amountToSell = selectedOrder.remainingAmount;
+      selectedOrder.remainingAmount = 0;
     }
     else {
-      amountToSell = selected_order.tradeAmount;
-      selected_order.remainingAmount -= selected_order.tradeAmount;
+      amountToSell = selectedOrder.tradeAmount;
+      selectedOrder.remainingAmount -= selectedOrder.tradeAmount;
     }
     poolBalance -= amountToSell; // deduct usdt from pool on order executed
-    selected_order.executedTrades += 1;
-    selected_order.lastExecutionTime = block.timestamp;
+    selectedOrder.executedTrades += 1;
+    selectedOrder.lastExecutionTime = block.timestamp;
 
-    uint256 token_received = swapTokenFromUsdt(
+
+    uint256 tokenReceived = swapTokenFromUsdt(
         amountToSell,
-        selected_order.tokenAddress
+        selectedOrder.tokenAddress
       );
 
     // update tokens recieved to order token balance
-    selected_order.tokenAccumulated += token_received;
+    selectedOrder.tokenAccumulated += tokenReceived;
 
     // update tokens recieved to pool token balance
-    poolTokenBalances[selected_order.tokenAddress] += token_received;
+    poolTokenBalances[selectedOrder.tokenAddress] += tokenReceived;
 
     //stop the order if all numOfTrades executed
-    if (selected_order.executedTrades == selected_order.numOfTrades) {
-      selected_order.status = orderStatus.COMPLETED;
+    if (selectedOrder.executedTrades == selectedOrder.numOfTrades) {
+      selectedOrder.status = OrderStatus.COMPLETED;
     }
 
     emit OrderExecuted(
       orderId,
       amountToSell,
-      token_received,
-      selected_order.executedTrades,
-      selected_order.remainingAmount
+      tokenReceived,
+      selectedOrder.executedTrades,
+      selectedOrder.remainingAmount
     );
 
-    if(selected_order.status == orderStatus.COMPLETED) {
-      emit OrderCompleted(orderId, selected_order.depositAmount, selected_order.tokenAccumulated, selected_order.tokenAddress);
+    if(selectedOrder.status == OrderStatus.COMPLETED) {
+      emit OrderCompleted(orderId, selectedOrder.depositAmount, selectedOrder.tokenAccumulated, selectedOrder.tokenAddress);
     }
     }
 

@@ -302,7 +302,7 @@ contract SleepRSI is Ownable {
             user: msg.sender,
             tokenAddress: _tokenAddress,
             investedAmount: _amount,
-            orderTokens: _amount.div(gridSize),
+            orderTokens: tokenReceived.div(gridSize),
             orderFiats: remainingFiat.div(gridSize),
             tokenBalance: tokenReceived,
             fiatBalance: remainingFiat,
@@ -325,81 +325,6 @@ contract SleepRSI is Ownable {
             _amount,
             _entryPrice,
             _tokenAddress
-        );
-    }
-
-    function withdrawByOrderId(uint256 _orderId) public {
-        // if order id exists
-        require(orders[_orderId].user != address(0), "Invalid order id!");
-        require(
-            orders[_orderId].user == msg.sender,
-            "Can't withdraw others order!"
-        );
-
-        Order storage _order = orders[_orderId];
-
-        uint256 usdtInOrder = _order.fiatBalance;
-
-        if (usdtInOrder > 0) {
-            // deduct usdt from order
-            _order.fiatBalance = 0;
-            // deduct usdt from pool
-            poolTokenBalances[usdtAddress] -= usdtInOrder;
-
-            IERC20(usdtAddress).transfer(msg.sender, usdtInOrder);
-        }
-
-        // deduct tokens from order if any
-        uint256 tokenInOrder = _order.tokenBalance;
-        if (tokenInOrder > 0) {
-            _order.tokenBalance = 0;
-            poolTokenBalances[_order.tokenAddress] -= tokenInOrder;
-            IERC20(_order.tokenAddress).transfer(msg.sender, tokenInOrder);
-        }
-
-        _order.open = false;
-
-        emit OrderCancelled(_order.orderId, msg.sender);
-    }
-
-    function withdraw(address _tokenAddress) public {
-        require(_tokenAddress != address(0), "Invalid token address!");
-
-        uint256 user_orderId = userOrders[msg.sender][_tokenAddress];
-
-        uint256 fiat_balance_to_return = 0;
-        uint256 token_amount_to_return = 0;
-
-        Order storage selected_order = orders[user_orderId];
-
-        fiat_balance_to_return = selected_order.fiatBalance;
-        token_amount_to_return = selected_order.tokenBalance;
-        selected_order.open = false;
-        // token and usdt deduction from each order
-        selected_order.fiatBalance = 0;
-        selected_order.tokenBalance = 0;
-
-        emit OrderCancelled(selected_order.orderId, msg.sender);
-
-        // deducting  pool usdt balances
-        if (fiat_balance_to_return > 0) {
-            poolTokenBalances[usdtAddress] -= fiat_balance_to_return;
-            IERC20(usdtAddress).transfer(msg.sender, fiat_balance_to_return);
-        }
-
-        // return tokens if some grids have already executed
-        if (token_amount_to_return > 0) {
-            poolTokenBalances[_tokenAddress] -= token_amount_to_return;
-
-            IERC20(_tokenAddress).transfer(msg.sender, token_amount_to_return);
-        }
-
-        emit Withdraw(
-            msg.sender,
-            user_orderId,
-            _tokenAddress,
-            fiat_balance_to_return,
-            token_amount_to_return
         );
     }
 
@@ -512,6 +437,81 @@ contract SleepRSI is Ownable {
             _runSellOrders(_orderIds, _rsiValue, _price);
             // run sell order
         }
+    }
+
+    function withdrawByOrderId(uint256 _orderId) public {
+        // if order id exists
+        require(orders[_orderId].user != address(0), "Invalid order id!");
+        require(
+            orders[_orderId].user == msg.sender,
+            "Can't withdraw others order!"
+        );
+
+        Order storage _order = orders[_orderId];
+
+        uint256 usdtInOrder = _order.fiatBalance;
+
+        if (usdtInOrder > 0) {
+            // deduct usdt from order
+            _order.fiatBalance = 0;
+            // deduct usdt from pool
+            poolTokenBalances[usdtAddress] -= usdtInOrder;
+
+            IERC20(usdtAddress).transfer(msg.sender, usdtInOrder);
+        }
+
+        // deduct tokens from order if any
+        uint256 tokenInOrder = _order.tokenBalance;
+        if (tokenInOrder > 0) {
+            _order.tokenBalance = 0;
+            poolTokenBalances[_order.tokenAddress] -= tokenInOrder;
+            IERC20(_order.tokenAddress).transfer(msg.sender, tokenInOrder);
+        }
+
+        _order.open = false;
+
+        emit OrderCancelled(_order.orderId, msg.sender);
+    }
+
+    function withdraw(address _tokenAddress) public {
+        require(_tokenAddress != address(0), "Invalid token address!");
+
+        uint256 user_orderId = userOrders[msg.sender][_tokenAddress];
+
+        uint256 fiat_balance_to_return = 0;
+        uint256 token_amount_to_return = 0;
+
+        Order storage selected_order = orders[user_orderId];
+
+        fiat_balance_to_return = selected_order.fiatBalance;
+        token_amount_to_return = selected_order.tokenBalance;
+        selected_order.open = false;
+        // token and usdt deduction from each order
+        selected_order.fiatBalance = 0;
+        selected_order.tokenBalance = 0;
+
+        emit OrderCancelled(selected_order.orderId, msg.sender);
+
+        // deducting  pool usdt balances
+        if (fiat_balance_to_return > 0) {
+            poolTokenBalances[usdtAddress] -= fiat_balance_to_return;
+            IERC20(usdtAddress).transfer(msg.sender, fiat_balance_to_return);
+        }
+
+        // return tokens if some grids have already executed
+        if (token_amount_to_return > 0) {
+            poolTokenBalances[_tokenAddress] -= token_amount_to_return;
+
+            IERC20(_tokenAddress).transfer(msg.sender, token_amount_to_return);
+        }
+
+        emit Withdraw(
+            msg.sender,
+            user_orderId,
+            _tokenAddress,
+            fiat_balance_to_return,
+            token_amount_to_return
+        );
     }
 
     function emergencyWithdrawPoolTokens(address _token) public onlyOwner {

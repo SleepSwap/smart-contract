@@ -10,7 +10,7 @@ async function deployRSIFixture() {
   await USDT.deployed()
 
   const usdcFact = await ethers.getContractFactory('FaucetToken')
-  const USDC = await usdtFact.deploy()
+  const USDC = await usdcFact.deploy()
   await USDC.deployed()
 
   const sleepFact = await ethers.getContractFactory('SleepToken')

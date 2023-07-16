@@ -256,8 +256,156 @@ describe('SleepRSI', function () {
       expect(userTokenBalanceAfter).to.equal(userTokenBalanceBefore.add(orderBefore?.tokenBalance))
     })
 
-    // console.log('created order ', order)
-    // Execute  order when RSI <= 30
+    it('Should withdraw after running all orders for user position', async function () {
+      const { USDT, rsiContract, SLEEP, user } = await loadFixture(deployRSIFixture)
+
+      const investAmount = ethers.utils.parseEther('100')
+
+      const poolUSDTFeeBefore = await rsiContract.fee(USDT.address)
+      const entryPrice = 10
+      // approve 100 usdt
+      await USDT.connect(user).approve(rsiContract.address, ethers.utils.parseEther('100'))
+
+      // Invest 100 dummy tokens
+      await rsiContract.connect(user).invest(investAmount, entryPrice, SLEEP.address)
+
+      const poolUSDTFeeAfter = await rsiContract.fee(USDT.address)
+
+      const orderBefore = await rsiContract.orders(1)
+      // pool balances before executing order
+      const poolTokenBalanceBefore = await rsiContract.poolTokenBalances(SLEEP.address)
+
+      const poolUSDTBalanceBefore = await rsiContract.poolTokenBalances(USDT.address)
+
+      const poolFeeBefore = await rsiContract.fee(SLEEP.address)
+
+      const rsiArray = [72, 29, 28, 70, 30, 74]
+      const orderIds = [1]
+      const executionPrices = [15, 8, 6, 11, 9, 14]
+      const grids = 3 // no of buy and sells of each position
+      const executedBuyOrders = 3
+      const executedSellOrders = 3
+      const isOrderOpen = false
+
+      for (let i = 0; i < rsiArray.length; i++) {
+        await rsiContract.executeOrders(orderIds, rsiArray[i], executionPrices[i])
+      }
+
+      // verify pool updates after position fully executed
+
+      const orderAfter = await rsiContract.orders(1)
+
+      expect(orderAfter.executionStatus.buyCount).to.equal(ethers.BigNumber.from(executedBuyOrders))
+      expect(orderAfter.executionStatus.sellCount).to.equal(
+        ethers.BigNumber.from(executedSellOrders)
+      )
+      expect(orderAfter.open).to.equal(isOrderOpen)
+
+      // calculate user pnl
+      const usdtValueBefore = orderBefore?.tokenBalance
+        .mul(orderBefore?.entryPrice)
+        .add(orderBefore.fiatBalance)
+        .div(ethers.utils.parseEther('1'))
+      const usdtValueAfter = orderAfter?.tokenBalance
+        .mul(14)
+        .add(orderAfter.fiatBalance)
+        .div(ethers.utils.parseEther('1'))
+
+      const pnl = usdtValueAfter.sub(usdtValueBefore)
+      console.log('pnl', pnl.toString())
+      expect(pnl).to.greaterThan(ethers.BigNumber.from(0))
+    })
+
+    it(' revert if non-admin try emergencyWithdrawPoolTokens', async function () {
+      const { USDT, rsiContract, SLEEP, user, addr1 } = await loadFixture(deployRSIFixture)
+
+      const investAmount = ethers.utils.parseEther('100')
+
+      const entryPrice = 10
+      // invest 100 usdt
+      await USDT.connect(user).approve(rsiContract.address, ethers.utils.parseEther('100'))
+
+      // Invest 100 dummy tokens
+      await rsiContract.connect(user).invest(investAmount, entryPrice, SLEEP.address)
+
+      await expect(rsiContract.connect(addr1).emergencyWithdrawPoolTokens(SLEEP.address)).to.be
+        .reverted
+    })
+
+    it(' revert if non-admin try emergencyWithdrawPoolUsdt', async function () {
+      const { USDT, rsiContract, SLEEP, user, addr1 } = await loadFixture(deployRSIFixture)
+
+      const investAmount = ethers.utils.parseEther('100')
+
+      const entryPrice = 10
+      // invest 100 usdt
+      await USDT.connect(user).approve(rsiContract.address, ethers.utils.parseEther('100'))
+
+      // Invest 100 dummy tokens
+      await rsiContract.connect(user).invest(investAmount, entryPrice, SLEEP.address)
+
+      await expect(rsiContract.connect(addr1).emergencyWithdrawPoolUsdt()).to.be.reverted
+    })
+
+    it('admin should run  emergencyWithdrawPoolTokens and recieve correct tokens', async function () {
+      const { USDT, rsiContract, SLEEP, user, addr1, owner } = await loadFixture(deployRSIFixture)
+
+      const adminTokenBalanceBefore = await SLEEP.balanceOf(owner.address)
+
+      const investAmount = ethers.utils.parseEther('100')
+
+      const entryPrice = 10
+      // invest 100 usdt
+      await USDT.connect(user).approve(rsiContract.address, ethers.utils.parseEther('100'))
+
+      // Invest 100 dummy tokens
+      await rsiContract.connect(user).invest(investAmount, entryPrice, SLEEP.address)
+
+      const poolTokenBalanceBefore = await rsiContract.poolTokenBalances(SLEEP.address)
+      const poolUsdtBalance = await rsiContract.poolTokenBalances(USDT.address)
+
+      await rsiContract.connect(owner).emergencyWithdrawPoolTokens(SLEEP.address)
+
+      const poolTokenBalanceAfter = await rsiContract.poolTokenBalances(SLEEP.address)
+
+      const adminTokenBalanceAfter = await SLEEP.balanceOf(owner.address)
+
+      expect(poolTokenBalanceAfter).to.equal(ethers.BigNumber.from(0))
+
+      expect(poolUsdtBalance).to.equal(investAmount.div(2))
+
+      expect(adminTokenBalanceAfter).to.equal(adminTokenBalanceBefore.add(poolTokenBalanceBefore))
+    })
+
+    it('admin should run  emergencyWithdrawPoolUsdt and recieve correct tokens', async function () {
+      const { USDT, rsiContract, SLEEP, user, addr1, owner } = await loadFixture(deployRSIFixture)
+
+      const adminUsdtBalanceBefore = await USDT.balanceOf(owner.address)
+
+      const investAmount = ethers.utils.parseEther('100')
+
+      const entryPrice = 10
+      // invest 100 usdt
+      await USDT.connect(user).approve(rsiContract.address, ethers.utils.parseEther('100'))
+
+      // Invest 100 dummy tokens
+      await rsiContract.connect(user).invest(investAmount, entryPrice, SLEEP.address)
+
+      const poolTokenBalanceBefore = await rsiContract.poolTokenBalances(SLEEP.address)
+      const poolUsdtBalanceBefore = await rsiContract.poolTokenBalances(USDT.address)
+
+      await rsiContract.connect(owner).emergencyWithdrawPoolUsdt()
+
+      const poolTokenBalanceAfter = await rsiContract.poolTokenBalances(SLEEP.address)
+      const poolUsdtBalanceAfter = await rsiContract.poolTokenBalances(USDT.address)
+
+      const adminTokenBalanceAfter = await SLEEP.balanceOf(owner.address)
+      const adminUsdtBalanceAfter = await USDT.balanceOf(owner.address)
+
+      expect(poolUsdtBalanceAfter).to.equal(ethers.BigNumber.from(0))
+
+      expect(adminUsdtBalanceAfter).to.equal(adminUsdtBalanceBefore.add(poolUsdtBalanceBefore))
+    })
 
     // should run all buy and sell orders and check final pool balances and confirm pnl
     // should run all buy and sell orders and withdraw position and check final pool balances

@@ -24,7 +24,6 @@ contract SleepSwapAccumulationTest is Ownable {
     uint256 public poolBalance; // usdt balance in pool
     mapping(address => uint256) public poolTokenBalances; // balance mapping for all tokens
 
-
     // Fees 0.005%
     uint256 public fee;
     uint256 public feePercent = 5;
@@ -97,7 +96,13 @@ contract SleepSwapAccumulationTest is Ownable {
     );
 
     // init contract
-    constructor(address _usdtAddress, address _swapRouter, uint256 _minimumOrderAmount, uint256 _minGrids, uint256 _minPercent) {
+    constructor(
+        address _usdtAddress,
+        address _swapRouter,
+        uint256 _minimumOrderAmount,
+        uint256 _minGrids,
+        uint256 _minPercent
+    ) {
         usdtAddress = _usdtAddress;
         swapRouter = _swapRouter;
         managers[msg.sender] = 1;
@@ -112,36 +117,34 @@ contract SleepSwapAccumulationTest is Ownable {
         _;
     }
 
-
     function addManager(address _manager) public onlyOwner {
         managers[_manager] = 1;
     }
 
     function updateFeePercent(uint256 _newFeePercent) public onlyOwner {
-        require(_newFeePercent > 0 , "Invalid _newFeePercent!");
+        require(_newFeePercent >= 0, "Invalid _newFeePercent!");
 
         feePercent = _newFeePercent;
     }
 
     function updateMinimumOrderAmount(uint256 _amount) public onlyOwner {
-        require(_amount > 0 , "Invalid amount!");
+        require(_amount > 0, "Invalid amount!");
 
         minimumOrderAmount = _amount;
     }
 
-
     function updateMinimumGrids(uint256 _grids) public onlyOwner {
-        require(_grids > 0 , "Invalid _grids!");
+        require(_grids > 0, "Invalid _grids!");
 
         minimumGrids = _grids;
     }
-      function updateMinimumPercentChange(uint256 _percentChange) public onlyOwner {
 
-        require(_percentChange > 0 , "Invalid _percentChange!");
+    function updateMinimumPercentChange(
+        uint256 _percentChange
+    ) public onlyOwner {
+        require(_percentChange > 0, "Invalid _percentChange!");
         minimumPercentChange = _percentChange;
     }
-
-    
 
     function swapTokenFromUsdt(
         uint256 _amountIn,
@@ -203,13 +206,12 @@ contract SleepSwapAccumulationTest is Ownable {
         uint256 _entryPrice,
         address _tokenAddress
     ) public {
-        
         require(_amount >= minimumOrderAmount, "amount less than min limit!");
         require(_grids >= minimumGrids, "grids less than min limit!");
-        require(_percentage >= minimumPercentChange, "percent change less than min limit!");
-        require(_entryPrice > 0, "Invalid entry price!");
-        require(_tokenAddress !=  address(0), "Invalid entry price!");
-
+        require(
+            _percentage >= minimumPercentChange.div(100),
+            "percent change less than min limit!"
+        );
 
         // Transfer the specified amount of USDT to this contract.
         TransferHelper.safeTransferFrom(
@@ -218,6 +220,9 @@ contract SleepSwapAccumulationTest is Ownable {
             address(this),
             _amount
         );
+
+        uint256 fiatOrderAmount = _amount.div(_grids);
+
         ordersCount++;
         Order memory new_order = Order({
             orderId: ordersCount,
@@ -225,7 +230,7 @@ contract SleepSwapAccumulationTest is Ownable {
             user: msg.sender,
             entryPrice: _entryPrice,
             prevPrice: _entryPrice,
-            fiatOrderAmount: _amount.div(_grids),
+            fiatOrderAmount: fiatOrderAmount,
             depositAmount: _amount,
             grids: _grids,
             percentage: _percentage,
@@ -239,7 +244,7 @@ contract SleepSwapAccumulationTest is Ownable {
         userOrders[msg.sender][_tokenAddress].push(ordersCount);
 
         // Updating  pool usdt balance when user deposit usdt
-        poolBalance += _amount;
+        poolBalance = poolBalance.add(_amount);
 
         emit Invested(
             ordersCount,
@@ -359,10 +364,9 @@ contract SleepSwapAccumulationTest is Ownable {
 
             // todo: remove this in production code
             uint256 token_received = swapTokenFromUsdtTest(
-                    selected_order.fiatOrderAmount,
-                    selected_order.tokenAddress
-                );
-         
+                selected_order.fiatOrderAmount,
+                selected_order.tokenAddress
+            );
 
             // update tokens recieved to order token balance
             selected_order.tokenAccumulated += token_received;

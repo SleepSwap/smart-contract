@@ -23,12 +23,11 @@ contract SleepSwapAccumulation is Ownable {
     uint256 public poolBalance; // usdt balance in pool
     mapping(address => uint256) public poolTokenBalances; // balance mapping for all tokens
 
-
     uint256 public fee;
     // Fees 0.005%
     uint256 public feePercent = 5;
 
-      // minimum order amount
+    // minimum order amount
     uint256 public minimumOrderAmount;
     uint256 public minimumGrids;
     uint256 public minimumPercentChange;
@@ -96,7 +95,13 @@ contract SleepSwapAccumulation is Ownable {
     );
 
     // init contract
-    constructor(address _usdtAddress, address _swapRouter, uint256 _minimumOrderAmount, uint256 _minGrids, uint256 _minPercent) {
+    constructor(
+        address _usdtAddress,
+        address _swapRouter,
+        uint256 _minimumOrderAmount,
+        uint256 _minGrids,
+        uint256 _minPercent
+    ) {
         usdtAddress = _usdtAddress;
         swapRouter = _swapRouter;
         managers[msg.sender] = 1;
@@ -119,25 +124,24 @@ contract SleepSwapAccumulation is Ownable {
         feePercent = _newFeePercent;
     }
 
-
     function updateMinimumOrderAmount(uint256 _amount) public onlyOwner {
-        require(_amount > 0 , "Invalid amount!");
+        require(_amount > 0, "Invalid amount!");
 
         minimumOrderAmount = _amount;
     }
 
-
     function updateMinimumGrids(uint256 _grids) public onlyOwner {
-        require(_grids > 0 , "Invalid _grids!");
+        require(_grids > 0, "Invalid _grids!");
 
         minimumGrids = _grids;
     }
-      function updateMinimumPercentChange(uint256 _percentChange) public onlyOwner {
 
-        require(_percentChange > 0 , "Invalid _percentChange!");
+    function updateMinimumPercentChange(
+        uint256 _percentChange
+    ) public onlyOwner {
+        require(_percentChange > 0, "Invalid _percentChange!");
         minimumPercentChange = _percentChange;
     }
-
 
     function swapTokenFromUsdt(
         uint256 _amountIn,
@@ -179,12 +183,12 @@ contract SleepSwapAccumulation is Ownable {
         uint256 _entryPrice,
         address _tokenAddress
     ) public {
-
         require(_amount >= minimumOrderAmount, "amount less than min limit!");
         require(_grids >= minimumGrids, "grids less than min limit!");
-        require(_percentage >= minimumPercentChange, "percent change less than min limit!");
-        require(_entryPrice > 0, "Invalid entry price!");
-        require(_tokenAddress !=  address(0), "Invalid entry price!");
+        require(
+            _percentage >= minimumPercentChange.div(100),
+            "percent change less than min limit!"
+        );
 
         // Transfer the specified amount of USDT to this contract.
         TransferHelper.safeTransferFrom(
@@ -332,12 +336,11 @@ contract SleepSwapAccumulation is Ownable {
             poolBalance -= selected_order.fiatOrderAmount; // deduct usdt from pool on order executed
             selected_order.remainingAmount -= selected_order.fiatOrderAmount; // deduct usdt from order on order executed
 
-           // swap tokens from uniswap
-            uint256  token_received = swapTokenFromUsdt(
-                    selected_order.fiatOrderAmount,
-                    selected_order.tokenAddress
-                );
-         
+            // swap tokens from uniswap
+            uint256 token_received = swapTokenFromUsdt(
+                selected_order.fiatOrderAmount,
+                selected_order.tokenAddress
+            );
 
             // update tokens recieved to order token balance
             selected_order.tokenAccumulated += token_received;

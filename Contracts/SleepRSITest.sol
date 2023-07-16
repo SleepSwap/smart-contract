@@ -8,11 +8,12 @@ import "@uniswap/v3-periphery/contracts/libraries/TransferHelper.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "./TestSwapRSI.sol";
 
 // BASE TOKEN; USDT - usdtToken
 // TRADE TOKENL: ERC20 - tokenAmount
 
-contract SleepRSI is Ownable {
+contract SleepRSITest is Ownable {
     using SafeCast for int256;
     using SafeMath for uint256;
     string public name = "SleepSwap RSI";
@@ -154,6 +155,41 @@ contract SleepRSI is Ownable {
         rsiThreshold = _rsiThresold;
     }
 
+    // // generic swap function to buy and sell tokens on uniswap
+    // function swapTokens(
+    //     uint256 _amountIn,
+    //     address _fromTokenAddress,
+    //     address _toTokenAddress,
+    // ) internal returns (uint256 amountOut) {
+    //     // Fee deduction
+    //     uint256 order_fee = _amountIn.mul(feePercent).div(10000);
+    //     fee += order_fee;
+    //     uint256 amountInAfterFee = _amountIn - order_fee;
+
+    //     address from_token = _fromTokenAddress;
+    //     address to_token = _toTokenAddress;
+
+    //     // Approve the router to spend input token
+    //     TransferHelper.safeApprove(from_token, swapRouter, amountInAfterFee);
+
+    //     // Naively set amountOutMinimum to 0. In production, use an oracle or other data source to choose a safer value for amountOutMinimum.
+    //     // We also set the sqrtPriceLimitx96 to be 0 to ensure we swap our exact input amount.
+    //     ISwapRouter.ExactInputSingleParams memory params = ISwapRouter
+    //         .ExactInputSingleParams({
+    //             tokenIn: from_token,
+    //             tokenOut: to_token,
+    //             fee: poolFee,
+    //             recipient: address(this),
+    //             deadline: block.timestamp,
+    //             amountIn: amountInAfterFee,
+    //             amountOutMinimum: 0,
+    //             sqrtPriceLimitX96: 0
+    //         });
+
+    //     // The call to exactInputSingle executes the swap.
+    //     amountOut = ISwapRouter(swapRouter).exactInputSingle(params);
+    // }
+
     // buy and sell tokens on uniswap
     function swapTokens(
         uint256 _amountIn,
@@ -190,6 +226,42 @@ contract SleepRSI is Ownable {
         amountOut = ISwapRouter(swapRouter).exactInputSingle(params);
     }
 
+    // buy and sell tokens on TestSwap
+    function swapTokensTest(
+        uint256 _amountIn,
+        address _from,
+        address _to,
+        uint256 _swapPrice // swap price to simulate swap from mock router
+    ) internal returns (uint256 amountOut) {
+        // Fee deduction
+        uint256 order_fee = _amountIn.mul(feePercent).div(10000);
+        fee[_from] += order_fee;
+        uint256 _amountInAfterFee = _amountIn - order_fee;
+
+        // check if buy
+        if (_from == usdtAddress) {
+            // buy tokens with usdt
+            // Approve the router to spend USDT.
+            TransferHelper.safeApprove(_from, swapRouter, _amountInAfterFee);
+
+            // test version of swap
+            amountOut = TestSwapRSI(swapRouter).swapFromUsdt(
+                _amountInAfterFee,
+                _swapPrice
+            );
+        } else {
+            // sell tokens for usdt
+            // Approve the router to spend USDT.
+            TransferHelper.safeApprove(_from, swapRouter, _amountInAfterFee);
+
+            // test version of swap
+            amountOut = TestSwapRSI(swapRouter).swapFromTokens(
+                _amountInAfterFee,
+                _swapPrice
+            );
+        }
+    }
+
     function invest(
         uint256 _amount,
         uint256 _entryPrice,
@@ -212,7 +284,7 @@ contract SleepRSI is Ownable {
         ordersCount++;
 
         // swap half of the tokens to usdt with current price
-        uint256 tokenReceived = swapTokens(
+        uint256 tokenReceived = swapTokensTest(
             _amount.div(2),
             usdtAddress,
             _tokenAddress,
@@ -276,7 +348,7 @@ contract SleepRSI is Ownable {
 
             uint256 amountIn = selected_order.orderFiats;
             //: change this to uniswap swap in production
-            uint256 amountOut = swapTokens(
+            uint256 amountOut = swapTokensTest(
                 amountIn,
                 usdtAddress,
                 selected_order.tokenAddress,
@@ -327,7 +399,7 @@ contract SleepRSI is Ownable {
 
             uint256 amountIn = selected_order.orderTokens;
             //: change this to uniswap swap in production
-            uint256 amountOut = swapTokens(
+            uint256 amountOut = swapTokensTest(
                 amountIn,
                 selected_order.tokenAddress,
                 usdtAddress,

@@ -64,7 +64,7 @@ async function deployRSIFixture() {
   const MINIMUN_INVESTMENT = toWei('10')
   const RSI_PERIOD = 60
   const RSI_THRESHOLD = 8 * 60 * 60
-  const SleepRSI = await ethers.getContractFactory('SleepRSI')
+  const SleepRSI = await ethers.getContractFactory('SleepRSITest')
   const rsiContract = await SleepRSI.deploy(
     USDT.address,
     testSwapRSI.address,
